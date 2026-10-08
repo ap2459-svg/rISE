@@ -1,6 +1,8 @@
 # Inventory Manager
 
-Open `inventory.html` with a static web server. The existing `index.html` and all Barista Mode files are unchanged. Inventory Manager currently has a separate entry point to respect that boundary.
+Open `index.html` with a static web server and choose **Play Inventory Manager**. The only change to the shared role screen is its Inventory Manager button; Barista gameplay remains unchanged.
+
+Inventory Manager starts with five guided practice steps: open Milk, find low Oat Milk stock, order 10 portions from Local, receive the delayed delivery, then start a fresh real shift. Practice pauses the clock and resets all stock and spending before the real game. Forecasts, supplier explanations, pricing, sales activity, and score details are expandable to keep the main screen focused.
 
 Run simulation checks with `node --test inventory-engine.test.js`.
 
