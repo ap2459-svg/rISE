@@ -1,35 +1,240 @@
-(()=>{
-let game=null,tab='shelves',category='all',supplier='wholesale',cart={},focus='Oat Milk',speed=1,lastTick=0,paint=0,reportSeen=false;
-const money=n=>'$'+n.toFixed(2),time=n=>`${Math.floor(Math.max(0,n)/60)}:${String(Math.floor(Math.max(0,n)%60)).padStart(2,'0')}`;
-const groupLabel={coffee:'Coffee beans & brews',milk:'Milk & alternatives',syrup:'Syrups',topping:'Toppings',bakery:'Bakery',supplies:'Supplies'};
-const art=x=>x.group==='bakery'?foodIcon(x.name):x.group==='supplies'?`<svg viewBox="0 0 92 84" aria-hidden="true"><path d="M23 20h47l-6 53H30Z" fill="${x.name==='Cup'?'#fff3df':'#d6b080'}" stroke="#59391f" stroke-width="3"/><path d="M20 19h53v8H20z" fill="#f8dfab" stroke="#59391f" stroke-width="3"/><text x="47" y="55" text-anchor="middle" font-size="15" fill="#59391f">${x.name==='Cup'?'rISE':'MIX'}</text></svg>`:ingredientIcon(x.group,x.name);
-function startInventory(){sim=null;paused=false;modalKind=null;document.body.classList.remove('playing');document.querySelectorAll('.modal-backdrop,.station-overlay').forEach(x=>x.remove());game=new InventorySim();window.inventoryGame=game;tab='shelves';category='all';cart={};speed=1;reportSeen=false;render();showIntro();}
-const originalRoles=roles;roles=function(){game=null;window.inventoryGame=null;document.body.classList.remove('inventory-playing');originalRoles();const role=document.querySelector('.role-choice');if(role){role.classList.remove('locked');role.classList.add('play');role.querySelector('small')?.remove();role.insertAdjacentHTML('beforeend','<button id="inventory-start" class="big-btn">Play Inventory →</button>');document.querySelector('#inventory-start').onclick=startInventory;}};
-function modal(title,body,actions){document.querySelector('#inventory-modal')?.remove();const el=document.createElement('div');el.id='inventory-modal';el.className='inv-modal';el.innerHTML=`<section role="dialog" aria-modal="true" aria-label="${title}" tabindex="-1"><h2>${title}</h2>${body}<footer>${actions}</footer></section>`;app.append(el);el.querySelector('section').focus();el.onclick=e=>{const b=e.target.closest('[data-modal]');if(!b)return;const action=b.dataset.modal;if(action==='close'){el.remove();}if(action==='next'){el.remove();game.next();cart={};reportSeen=false;tab='shelves';render();showPlan();}if(action==='home'){el.remove();roles();}if(action==='retry'){el.remove();startInventory();}if(action==='answer'){const correct=b.dataset.correct==='yes';el.querySelector('.inv-answer').textContent=correct?'Exactly. Stock must cover demand during delivery time, with a small buffer for surprises.':'Think about what customers will use while the delivery is on its way. That demand needs to be covered too.';}};}
-function showIntro(){modal('Stock smart. Keep the café moving.',`<p class="inv-lead">The café has a problem: popular ingredients run out while unused food goes to waste. You’re the Inventory Manager.</p><div class="inv-mission"><p><b>1. Plan</b><br>Read the forecast and order supplies within your budget.</p><p><b>2. Run</b><br>Watch customers, receive deliveries, and prevent shortages.</p><p><b>3. Improve</b><br>Use your results to prepare for the next shift.</p></div><p>Play three 5-minute shifts: <b>Morning → Afternoon → Evening.</b> Baristas prepare orders automatically. Your stock decisions control whether the line keeps moving.</p><p>Each unit is enough for one serving. Milk lasts about two shifts; bakery stock lasts just over one. Use the oldest stock first.</p>`,`<button data-modal="close" class="inv-green">Let’s plan the morning →</button>`);}
-function showPlan(){modal(`${game.label} planning`, `<p>${game.messages[0]}</p><p>Your cash, usable stock, and pending deliveries carry over. Check the shelves before ordering again.</p><p><b>Forecast:</b> ${game.schedule.length-1}–${game.schedule.length+1} customers. The simulation may vary from a forecast; this practice day has ${game.schedule.length} scheduled arrivals.</p><p>Opening the café starts the five-minute clock and delivery timers.</p>`,`<button data-modal="close" class="inv-green">Check my shelves →</button>`);}
-function render(){if(!game)return;document.body.classList.add('inventory-playing');app.innerHTML=`<main class="inventory-game"><header class="inv-header"><div class="inv-brand"><b>rISE Café</b><span>Inventory Manager</span></div><div class="inv-stat"><small>SHIFT ${game.daypart+1} / 3 · ${game.label.toUpperCase()}</small><b id="inv-clock"></b></div><div class="inv-stat"><small>CASH AVAILABLE</small><b id="inv-cash"></b><small id="inv-profit"></small></div><div class="inv-stat"><small>CUSTOMERS SERVED</small><b id="inv-served"></b></div><button id="inv-pause" aria-label="Pause simulation">Pause</button><button id="inv-home">Exit</button></header><div class="inv-layout"><nav class="inv-sidebar" aria-label="Inventory navigation"><button data-tab="shelves">▤ Inventory shelves</button><button data-tab="orders">▣ Order supplies</button><button data-tab="trends">▥ Sales & trends</button><button data-tab="bakery">♨ Bakery strategy</button><div class="inv-goal"><b>Your mission</b><p>Serve at least 90% of customers.<br>Keep waste under $5.<br>Finish with a profit.</p><small>More stock isn’t always better.</small></div><div class="inv-speed"><label for="inv-speed">Simulation speed</label><select id="inv-speed"><option value="1">1× real time</option><option value="2">2×</option><option value="4">4×</option></select></div></nav><section class="inv-main"><div class="inv-topline"><div><h1 id="inv-heading"></h1><p id="inv-subheading"></p></div><button id="inv-open" class="inv-green">Open café →</button></div><div id="inv-workspace"></div><div class="inv-cafe"><div class="inv-cafe-title"><b>Live café floor</b><span id="inv-queue-count"></span></div><div id="inv-customers"></div></div></section><aside class="inv-clipboard"><h2>Reorder clipboard</h2><p>Cover expected demand, then add a small safety buffer.</p><div id="inv-suggestions"></div><button id="inv-suggested" class="inv-green">Review suggested order →</button><h3>Delivery dock</h3><div id="inv-deliveries"></div><div class="inv-tip"><b>Manager’s notebook</b><p id="inv-notice"></p></div></aside></div><footer class="inv-footer">Plan → Order → Receive → Observe → Improve <span>Quantities = serving portions · FIFO: oldest stock used first</span></footer></main>`;
- app.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;drawWorkspace();update();});document.querySelector('#inv-speed').value=speed;document.querySelector('#inv-speed').onchange=e=>speed=+e.target.value;document.querySelector('#inv-pause').onclick=()=>{if(game.elapsed===0&&!game.running)return;game.running=!game.running;update();};document.querySelector('#inv-home').onclick=()=>{game.running=false;modal('Leave this inventory day?', '<p>Your current day is stored only in this session. Leaving resets its progress.</p>','<button data-modal="close">Keep planning</button><button data-modal="home">Return to roles</button>');};document.querySelector('#inv-open').onclick=()=>{game.running=true;update();};document.querySelector('#inv-suggested').onclick=()=>{cart={};INVENTORY_ITEMS.forEach(x=>{const q=Math.min(game.suggested(x.name),Math.max(0,x.cap-game.stock(x.name)-game.deliveries.filter(d=>!d.received).reduce((s,d)=>s+(d.cart[x.name]||0),0)));if(q)cart[x.name]=q;});tab='orders';drawWorkspace();update();};drawWorkspace();update();}
-function drawWorkspace(){const w=document.querySelector('#inv-workspace');if(!w)return;document.querySelector('#inv-heading').textContent={shelves:'Inventory shelves',orders:'Order the right amount',trends:'See the story in your numbers',bakery:'Bake here or buy ready-made?'}[tab];document.querySelector('#inv-subheading').textContent={shelves:'Click an ingredient to inspect its freshness and stock history.',orders:'Deliveries take time. Review your basket before spending.',trends:'Every graph uses your actual simulation results.',bakery:'Trade ingredient stock, labor, and oven time against supplier cost.'}[tab];
- if(tab==='shelves'){w.innerHTML=`<div class="inv-filters"><button data-cat="all" class="${category==='all'?'selected':''}">All shelves</button>${Object.keys(INVENTORY_GROUPS).map(k=>`<button data-cat="${k}" class="${category===k?'selected':''}">${groupLabel[k].split(' &')[0]}</button>`).join('')}</div><div class="inv-shelves">${Object.entries(INVENTORY_GROUPS).filter(([k])=>category==='all'||category===k).map(([k])=>`<section class="inv-shelf"><h3>${groupLabel[k]}</h3><div>${INVENTORY_ITEMS.filter(x=>x.group===k).map(x=>`<button class="inv-item" data-item="${x.name}">${art(x)}<strong>${x.name}</strong><span data-stock="${x.name}"></span><meter data-meter="${x.name}" min="0" max="${x.cap}" low="3" optimum="${x.cap}"></meter></button>`).join('')}</div></section>`).join('')}</div>`;w.querySelectorAll('[data-cat]').forEach(b=>b.onclick=()=>{category=b.dataset.cat;drawWorkspace();update();});w.querySelectorAll('[data-item]').forEach(b=>b.onclick=()=>inspect(b.dataset.item));}
- if(tab==='orders'){w.innerHTML=`<div class="inv-supplier"><label><input type="radio" name="supplier" value="wholesale" ${supplier==='wholesale'?'checked':''}> <b>Wholesaler</b><small>55 sec · $1 delivery · 5 portions minimum<br>Every third shipment: inspect for a short delivery.</small></label><label><input type="radio" name="supplier" value="express" ${supplier==='express'?'checked':''}> <b>Local express</b><small>15 sec · $3 delivery · ingredients cost 50% more<br>Reliable delivery · no minimum.</small></label></div><div class="inv-order-list">${INVENTORY_ITEMS.map(x=>`<label class="inv-order-row">${art(x)}<span><b>${x.name}</b><small>${money(x.cost)} base / portion · capacity ${x.cap}</small></span><input aria-label="Order ${x.name}" data-qty="${x.name}" type="number" min="0" max="${x.cap}" step="1" value="${cart[x.name]||0}"></label>`).join('')}</div><div class="inv-checkout"><strong id="inv-total"></strong><button id="inv-buy" class="inv-green">Place order</button><span id="inv-buy-error" role="status"></span></div>`;w.querySelectorAll('[name=supplier]').forEach(b=>b.onchange=()=>{supplier=b.value;total();});w.querySelectorAll('[data-qty]').forEach(b=>b.oninput=()=>{cart[b.dataset.qty]=Math.max(0,Math.floor(+b.value||0));total();});w.querySelector('#inv-buy').onclick=()=>{const c=Object.fromEntries(Object.entries(cart).filter(([,q])=>q>0));const error=game.purchase(c,supplier);if(error)w.querySelector('#inv-buy-error').textContent=error;else{cart={};drawWorkspace();update();}};total();}
- if(tab==='trends'){w.innerHTML=`<div class="inv-chart-grid"><section class="inv-chart"><h3>Stock through the day</h3><select id="inv-focus">${INVENTORY_ITEMS.map(x=>`<option ${x.name===focus?'selected':''}>${x.name}</option>`).join('')}</select><div id="inv-stock-chart"></div><p>Zero stock can block an order. Rising stock marks deliveries or fresh batches.</p></section><section class="inv-chart"><h3>Customers by shift</h3><div id="inv-served-chart"></div><p>Green = served · red = lost or unfinished</p></section><section class="inv-chart"><h3>Where the money goes</h3><div id="inv-money-chart"></div><p>Profit = revenue − ingredients used − expired stock − delivery fees.</p></section><section class="inv-chart"><h3>Customer impact</h3><div id="inv-impact"></div><p>Supply-wait seconds add up across all customers waiting for missing ingredients.</p></section></div>`;w.querySelector('#inv-focus').onchange=e=>{focus=e.target.value;updateGraphs();};updateGraphs();}
- if(tab==='bakery'){w.innerHTML=`<div class="inv-strategy"><button data-mode="buy" class="${game.bakeryMode==='buy'?'selected':''}"><b>Buy ready-made</b><p>Purchase finished items in Order Supplies. Saves oven time but ties up shelf space and cash.</p></button><button data-mode="make" class="${game.bakeryMode==='make'?'selected':''}"><b>Make small batches</b><p>3 Baking Mix + $1.50 labor → 3 fresh items in 25 seconds. One batch at a time.</p></button></div><div class="inv-bake-cards">${INVENTORY_ITEMS.filter(x=>x.group==='bakery').map(x=>`<button data-bake="${x.name}">${art(x)}<b>${x.name}</b><span>Bake 3 portions</span></button>`).join('')}</div><div class="inv-tip"><p id="inv-batch"></p><b>Make-or-buy decision</b><p>In-house batches are flexible, but use labor and time. Ready-made stock arrives through your supplier. Both can expire if demand is lower than expected.</p><span id="inv-bake-error" role="status"></span></div>`;w.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{game.bakeryMode=b.dataset.mode;drawWorkspace();update();});w.querySelectorAll('[data-bake]').forEach(b=>b.onclick=()=>{const err=game.bake(b.dataset.bake);w.querySelector('#inv-bake-error').textContent=err||'Batch started. You can manage other shelves while it bakes.';update();});}
-}
-function total(){const el=document.querySelector('#inv-total');if(el)el.textContent=`Total ${money(game.quote(cart,supplier))} · ${supplier==='express'?15:55} sec after café opens`;}
-function lineChart(name){const data=game.history;const cap=INVENTORY_ITEMS.find(x=>x.name===name).cap;const points=data.map(p=>`${40+p.t/900*400},${150-p.stock[name]/cap*125}`).join(' ');return `<svg viewBox="0 0 470 190" role="img" aria-label="${name} stock history, current ${game.stock(name)} portions"><path d="M40 20V150H440" fill="none" stroke="#a58e72"/><path d="M40 87H440M173 20V150M306 20V150" stroke="#e8dbc3" stroke-dasharray="4 4"/><polyline points="${points}" fill="none" stroke="#178363" stroke-width="4"/><text x="8" y="26">${cap}</text><text x="18" y="155">0</text><text x="40" y="177">Morning</text><text x="173" y="177">Afternoon</text><text x="306" y="177">Evening</text></svg>`;}
-function bars(rows){const max=Math.max(1,...rows.map(r=>Math.abs(r[1])));return `<div class="inv-bars">${rows.map(([label,n,color])=>`<div><span>${label}</span><i style="--bar:${color};--amount:${Math.abs(n)/max*100}%"></i><b>${typeof n==='number'?Math.round(n*10)/10:n}</b></div>`).join('')}</div>`;}
-function updateGraphs(){if(!document.querySelector('#inv-stock-chart'))return;const m=game.metrics;document.querySelector('#inv-stock-chart').innerHTML=lineChart(focus);const reports=game.ended?game.reports:[...game.reports,{label:game.label,...m}];document.querySelector('#inv-served-chart').innerHTML=bars(reports.flatMap(r=>[[r.label+' served',r.served,'#238b60'],[r.label+' lost',r.lost,'#d3664a']]));document.querySelector('#inv-money-chart').innerHTML=bars([['Sales ($)',m.revenue,'#238b60'],['Ingredients used ($)',m.cogs,'#d59f46'],['Waste ($)',m.waste,'#d3664a'],['Delivery fees ($)',m.fees,'#866b9a']]);document.querySelector('#inv-impact').innerHTML=`<dl><dt>Average wait of served customers</dt><dd>${m.served?Math.round(m.wait/m.served):0} sec</dd><dt>Total waiting for supplies</dt><dd>${Math.round(m.supplyWait)} sec</dd><dt>Customers affected by shortages</dt><dd>${m.stockouts}</dd><dt>Potential lost sales</dt><dd>${money(m.lostSales)}</dd></dl>`;}
-function inspect(name){const x=INVENTORY_ITEMS.find(x=>x.name===name);const lots=game.lots[name];modal(name,`<div class="inv-inspect-art">${art(x)}</div><p><b>${game.stock(name)} / ${x.cap} portions</b> · ${money(x.cost)} base cost each</p><p>${lots.length?'Oldest stock expires in '+time(Math.min(...lots.map(l=>l.expires))-game.clock)+' of simulation time.':'This shelf is empty.'}</p>${lineChart(name)}<p><b>Reorder point:</b> Buy before stock falls below what customers will use during the supplier’s delivery time. A small safety buffer protects against surprises.</p>`,`<button data-modal="close" class="inv-green">Back to shelves</button>`);}
-function update(){if(!game||!document.querySelector('.inventory-game'))return;document.querySelector('#inv-clock').textContent=time(300-game.elapsed)+' remaining';document.querySelector('#inv-cash').textContent=money(game.cash);document.querySelector('#inv-profit').textContent='Shift profit '+money(game.metrics.revenue-game.metrics.cogs-game.metrics.waste-game.metrics.fees);document.querySelector('#inv-served').textContent=`${game.metrics.served} / ${game.schedule.length}`;document.querySelector('#inv-pause').textContent=game.running?'Pause':'Resume';document.querySelector('#inv-pause').disabled=game.ended||game.elapsed===0&&!game.running;const open=document.querySelector('#inv-open');open.hidden=game.elapsed>0||game.running||game.ended;document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.tab===tab));document.querySelectorAll('[data-stock]').forEach(el=>{const n=el.dataset.stock;el.textContent=`${game.stock(n)} / ${INVENTORY_ITEMS.find(x=>x.name===n).cap}`;});document.querySelectorAll('[data-meter]').forEach(el=>el.value=game.stock(el.dataset.meter));
- const suggestions=INVENTORY_ITEMS.map(x=>({...x,q:game.suggested(x.name)})).filter(x=>x.q>0).sort((a,b)=>game.stock(a.name)-game.stock(b.name));document.querySelector('#inv-suggestions').innerHTML=suggestions.length?`<table><thead><tr><th>Item</th><th>Stock</th><th>Add</th></tr></thead><tbody>${suggestions.map(x=>`<tr><td>${x.name}</td><td class="${game.stock(x.name)<2?'inv-low':''}">${game.stock(x.name)}</td><td>${x.q}</td></tr>`).join('')}</tbody></table>`:'<p class="inv-good">✓ Expected demand is covered.</p>';document.querySelector('#inv-deliveries').innerHTML=game.deliveries.filter(d=>!d.received).map(d=>`<div class="inv-delivery"><b>${d.supplier==='express'?'Express':'Wholesaler'} #${d.id}</b><span>${game.clock<d.eta?'Arriving in '+time(d.eta-game.clock):'At the dock — check & shelve'}</span>${game.clock>=d.eta?`<button class="inv-green" data-receive="${d.id}">Receive delivery</button>`:'<progress max="55" value="'+Math.max(0,55-(d.eta-game.clock))+'"></progress>'}</div>`).join('')||'<p>No deliveries in transit.</p>';document.querySelectorAll('[data-receive]').forEach(b=>b.onclick=()=>{game.receive(+b.dataset.receive);update();});document.querySelector('#inv-notice').textContent=game.messages[0]||'Check your forecast before opening.';
- const visible=game.orders.filter(o=>o.status==='waiting'||o.status==='preparing'||o.status==='served'&&game.clock-o.finished<4);document.querySelector('#inv-queue-count').textContent=`${visible.filter(o=>o.status==='waiting').length} waiting · ${game.orders.some(o=>o.status==='preparing')?'barista preparing':'barista ready'}`;const customerMarkup=visible.length?visible.map(o=>{const missing=game.missing(o);const wait=game.clock-o.arrival;return `<div data-customer="${o.id}" class="inv-customer ${o.status}" style="--avatar:${o.index}"><div class="inv-customer-art">${character(o.index,wait>60?'angry':'happy')}</div><b>${o.name}</b><small>${o.status==='served'?'Order ready!':o.status==='preparing'?'Preparing · '+time(o.ready-game.clock):missing.length?'Needs '+missing.slice(0,2).join(' + '):'Waiting for barista'}</small><meter min="0" max="100" value="${Math.max(0,100-wait*.8)}"></meter></div>`;}).join(''):`<div class="inv-floor-empty"><b>${game.elapsed===0?'Ready for opening time':'The line is clear'}</b><span>${game.elapsed===0?`${game.schedule.length-1}–${game.schedule.length+1} customers forecast · stock up before the rush`:'Use the breathing room to check your shelves.'}</span></div>`;
- const floor=document.querySelector('#inv-customers'); const oldIds=[...floor.querySelectorAll('[data-customer]')].map(x=>x.dataset.customer).join(',');const newIds=visible.map(o=>o.id).join(',');if(oldIds!==newIds||!visible.length){floor.innerHTML=customerMarkup;}else{const tmp=document.createElement('div');tmp.innerHTML=customerMarkup;[...tmp.children].forEach((node,i)=>{const existing=floor.children[i];existing.className=node.className;existing.innerHTML=node.innerHTML;});}
- if(tab==='trends')updateGraphs();if(tab==='bakery'){document.querySelector('#inv-batch').textContent=game.batch?`${game.batch.name} baking · ${time(game.batch.ready-game.clock)} left`:'Oven ready · Baking Mix in stock: '+game.stock('Baking Mix');document.querySelectorAll('[data-bake]').forEach(b=>b.disabled=game.bakeryMode!=='make'||!!game.batch);}
- if(game.ended&&!reportSeen){reportSeen=true;showReport();}}
-function showReport(){const r=game.reports.at(-1),passed=[r.served/r.arrived>=.9,r.waste<5,r.profit>0];const points=passed.filter(Boolean).length*5;modal(`${r.label} results · ${points} / 15 points`,`<div class="inv-result-metrics"><div><b>${r.served}/${r.arrived}</b><span>customers served</span></div><div><b>${money(r.profit)}</b><span>shift profit</span></div><div><b>${money(r.waste)}</b><span>expired stock</span></div><div><b>${Math.round(r.averageWait)}s</b><span>average served wait</span></div></div><div class="inv-chart-grid"><section class="inv-chart"><h3>Service outcomes</h3>${bars([['Served',r.served,'#238b60'],['Lost / unfinished',r.lost,'#d3664a'],['Affected by shortage',r.stockouts,'#d59f46']])}</section><section class="inv-chart"><h3>Money this shift ($)</h3>${bars([['Revenue',r.revenue,'#238b60'],['Ingredients used',r.cogs,'#d59f46'],['Waste',r.waste,'#d3664a'],['Delivery fees',r.fees,'#866b9a']])}</section></div><p><b>What happened:</b> ${Math.round(r.supplyWait)} total customer-seconds waiting for supplies; ${money(r.lostSales)} potential sales lost. ${r.stockouts?'Order earlier or use express delivery for the items that blocked service.':'Your supplies kept up with demand.'} ${r.waste>0?'Smaller batches could reduce expired stock.':'No stock expired this shift.'}</p><p class="inv-accounting">Cash ${money(r.cash)} · purchases ${money(r.purchases)}. Profit counts stock when used or expired, so buying supplies is not deducted twice.</p><div class="inv-quiz"><b>Quick manager check: when should you reorder?</b><div><button data-modal="answer">Only when the shelf is empty</button><button data-modal="answer" data-correct="yes">Before delivery-time demand uses up stock</button></div><p class="inv-answer" role="status"></p></div>${game.daypart===2?'<p><b>Day complete!</b> Compare the shifts in Sales & Trends, or try again with a different purchasing strategy.</p>':''}`,`<button data-modal="close">Review graphs</button>${game.daypart<2?'<button data-modal="next" class="inv-green">Plan '+['Afternoon','Evening'][game.daypart]+' →</button>':'<button data-modal="retry" class="inv-green">Try a new inventory day</button><button data-modal="home">Choose a role</button>'}`);}
-// Persistent report access after closing the summary, including next-shift planning.
-app.addEventListener('click',e=>{if(e.target.closest('#inv-results'))showReport();});
-function loop(now){const dt=lastTick?Math.min((now-lastTick)/1000,.1):0;lastTick=now;if(game){if(!document.querySelector('#inventory-modal'))game.tick(dt*speed);if(now-paint>500){update();paint=now;if(game?.ended&&!document.querySelector('#inv-results'))document.querySelector('.inv-topline')?.insertAdjacentHTML('beforeend','<button id="inv-results" class="inv-green">Shift results →</button>');}}requestAnimationFrame(loop);}
-requestAnimationFrame(loop);roles();
+/* Inventory Manager owns its UI and simulation; Barista Mode is not modified. */
+(() => {
+  let game = null, category = 'milk', selected = 'Oat Milk', speed = 1;
+  let tutorial = null, lastFrame = 0, lastPaint = 0, reportShown = false, modalResume = false;
+  let mobileView = 'stock';
+  const $ = selector => document.querySelector(selector);
+  const money = value => '$' + value.toFixed(2);
+  const time = value => `${Math.floor(Math.max(0, value) / 60)}:${String(Math.ceil(Math.max(0, value) % 60)).padStart(2, '0')}`;
+  const labels = {coffee:'Coffee', milk:'Milk', syrup:'Syrups', topping:'Toppings', bakery:'Bakery', supplies:'Supplies'};
+  const symbols = {coffee:'☕', milk:'🥛', syrup:'◒', topping:'☁', bakery:'🥐', supplies:'▣'};
+  const item = name => INVENTORY_ITEMS.find(product => product.name === name);
+  const incoming = name => game.deliveries.filter(delivery => !delivery.received).reduce((sum, delivery) => sum + (delivery.cart[name] || 0), 0);
+  const profit = () => game.metrics.revenue - game.metrics.cogs - game.metrics.waste - game.metrics.fees;
+  const required = name => Math.max(1, Math.ceil((game.forecast()[name] || 0) * item(name).lead / 300) + 1);
+  const status = name => game.stock(name) === 0 ? 'empty' : game.stock(name) <= required(name) ? 'low' : 'good';
+
+  function dialog(title, body, buttons) {
+    $('#inventory-modal')?.remove();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'im-overlay';
+    backdrop.id = 'inventory-modal';
+    backdrop.innerHTML = `<section role="dialog" aria-modal="true" aria-label="${title}" tabindex="-1"><span class="im-eyebrow">rISE · Inventory Manager</span><h2>${title}</h2>${body}<footer>${buttons}</footer></section>`;
+    app.append(backdrop);
+    backdrop.querySelector('section').focus();
+    // Keep keyboard focus inside the active dialog.
+    backdrop.onkeydown = event => {
+      if (event.key !== 'Tab') return;
+      const controls = [...backdrop.querySelectorAll('button, input, select, a[href]')].filter(node => !node.disabled);
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === backdrop.querySelector('section'))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    backdrop.onclick = event => {
+      const action = event.target.closest('[data-action]')?.dataset.action;
+      if (action) handleAction(action);
+    };
+  }
+  const closeDialog = () => { $('#inventory-modal')?.remove(); $('#im-start')?.focus(); };
+
+  function startInventory() {
+    sim = null;
+    paused = false;
+    modalKind = null;
+    document.querySelectorAll('.modal-backdrop,.station-overlay').forEach(node => node.remove());
+    document.body.classList.remove('playing');
+    game = new InventorySim();
+    window.inventoryGame = game;
+    category = 'milk'; selected = 'Oat Milk'; speed = 1; mobileView = 'stock';
+    tutorial = null; reportShown = false;
+    render();
+    dialog('Your stockroom. Your call.', '<p>Keep the café supplied. Spot low stock, order what you need, and receive deliveries before you run out.</p><div class="im-three"><span>① Check stock</span><span>② Order</span><span>③ Receive</span></div><p class="im-muted">Start with one practice order. Your real cash and stock reset afterward.</p>', '<button data-action="tutorial" class="im-primary">Teach me how to play →</button><button data-action="skip">I know how · show mission</button>');
+  }
+
+  // Extend the role chooser only while preserving its existing barista handler.
+  const originalRoles = roles;
+  roles = function() {
+    game = null; window.inventoryGame = null;
+    document.body.classList.remove('inventory-playing');
+    originalRoles();
+    const card = document.querySelector('.role-choice');
+    if (!card) return;
+    card.classList.remove('locked'); card.classList.add('play'); card.querySelector('small')?.remove();
+    card.insertAdjacentHTML('beforeend', '<button id="inventory-start" class="big-btn">Play Inventory →</button>');
+    $('#inventory-start').onclick = startInventory;
+  };
+
+  function mission() {
+    game.running = false;
+    const objectives = ['Oat Milk is low. Reorder before the first rush.', 'Cold Brew demand rises. Check coffee and straws.', 'A quieter shift. Buy small amounts to limit waste.'];
+    dialog(`${game.label} mission`, `<p>${objectives[game.daypart]}</p><div class="im-three"><span><b>90%</b> customers served</span><span><b>Under $5</b> wasted stock</span><span><b>Positive</b> shift profit</span></div><p>You have <b>${money(game.cash)}</b> and <b>${game.schedule.length} customers</b> expected. Orders take 20–35 café seconds to arrive. Plan while paused, then press <b>Start shift</b>.</p>`, '<button data-action="plan" class="im-primary">Let me check my stock →</button>');
+  }
+
+  function render() {
+    document.body.classList.add('inventory-playing');
+    app.innerHTML = `<main class="im-game" data-view="${mobileView}">
+      <header class="im-header"><div class="im-brand"><b>rISE Café</b><span>Inventory Manager</span></div><div class="im-hud"><span id="im-clock"></span><span>Cash <b id="im-cash"></b></span><span>Served <b id="im-served"></b></span><span>Profit <b id="im-profit"></b></span></div><button id="im-help">Help</button><button id="im-exit">Exit</button></header>
+      <section id="im-guide" class="im-guide" aria-live="polite" hidden></section>
+      <section class="im-controls"><div><b id="im-phase"></b><small id="im-notice"></small></div><div class="im-time"><button id="im-start" class="im-primary">Start shift</button><div class="im-speeds" role="group" aria-label="Simulation speed">${[1,3,6].map(value => `<button data-speed="${value}" aria-label="${value} times speed">${value}×</button>`).join('')}</div><button id="im-jump">To next delivery ⏩</button></div></section>
+      <nav class="im-mobile" aria-label="Workspace"><button data-view="stock">Stock</button><button data-view="order">Order</button><button data-view="dock">Deliveries</button></nav>
+      <div class="im-layout"><section class="im-stock"><div class="im-title"><h1>Stockroom</h1><span class="im-legend">● Healthy <i>● Low</i> <em>● Empty</em></span></div><nav class="im-categories" aria-label="Product categories">${Object.entries(labels).map(([key,label]) => `<button data-category="${key}">${symbols[key]} ${label}</button>`).join('')}</nav><div id="im-products" class="im-products"></div><div class="im-stock-note">One unit = one serving or supply item. Customers use stock automatically.</div></section>
+      <aside class="im-order"><h2>Order one product</h2><div id="im-order-card"></div></aside>
+      <aside class="im-dock"><div class="im-title"><h2>Delivery dock</h2><span id="im-pending"></span></div><div id="im-deliveries"></div><div class="im-objectives"><h3>Shift goals</h3><p>Serve 90% · Waste &lt; $5 · Make a profit</p><button id="im-mission">View mission</button></div><button id="im-results" hidden>Shift results →</button></aside></div>
+      <footer class="im-footer"><span id="im-speed-note">1× · one café second per real second</span><span>Small orders. Early deliveries. Happy café.</span></footer></main>`;
+    app.querySelectorAll('[data-category]').forEach(button => button.onclick = () => {
+      category = button.dataset.category;
+      if (tutorial === 0 && category === 'milk') tutorial = 1;
+      drawProducts(); drawGuide();
+    });
+    app.querySelectorAll('[data-view]').forEach(button => button.onclick = () => setView(button.dataset.view));
+    app.querySelectorAll('[data-speed]').forEach(button => button.onclick = () => { speed = Number(button.dataset.speed); update(); });
+    $('#im-start').onclick = () => { if (tutorial !== null || game.ended) return; game.running = !game.running; update(); };
+    $('#im-jump').onclick = advanceToDelivery;
+    $('#im-help').onclick = () => {
+      modalResume = game.running; game.running = false;
+      dialog('Three things to do', '<div class="im-three"><span>① Click a low product</span><span>② Choose quantity & order</span><span>③ Receive it at the dock</span></div><p>Each product has its own supplier. Use 1× for careful decisions or 3× / 6× to move faster. <b>To next delivery</b> advances the café too: customers keep using stock.</p><p>Yellow means order soon. Red means empty. Keep bakery orders small so they don’t expire.</p>', '<button data-action="resume" class="im-primary">Got it</button>');
+    };
+    $('#im-mission').onclick = () => { modalResume = game.running; mission(); };
+    $('#im-results').onclick = report;
+    $('#im-exit').onclick = () => { modalResume = game.running; game.running = false; dialog('Leave this day?', '<p>Leaving clears your inventory progress.</p>', '<button data-action="resume">Stay here</button><button data-action="home">Choose role</button>'); };
+    drawProducts(); drawOrder(); update();
+  }
+
+  function setView(view) {
+    mobileView = view; $('.im-game').dataset.view = view;
+    app.querySelectorAll('.im-mobile button').forEach(button => button.setAttribute('aria-pressed', button.dataset.view === view));
+  }
+  function drawProducts() {
+    app.querySelectorAll('[data-category]').forEach(button => button.setAttribute('aria-pressed', category === button.dataset.category));
+    $('#im-products').innerHTML = INVENTORY_ITEMS.filter(product => product.group === category).map(product => `<button class="im-product ${status(product.name)} ${selected === product.name ? 'selected' : ''}" data-product="${product.name}" aria-label="${product.name}, ${game.stock(product.name)} in stock" ${tutorial !== null && (tutorial !== 1 || product.name !== 'Oat Milk') ? 'disabled' : ''}><span class="im-product-icon">${product.group === 'supplies' ? ({Cup:'☕',Lid:'◎',Straw:'╱',Utensil:'🍴','Bakery Bag':'▣',Napkin:'▧'}[product.name]) : symbols[product.group]}</span><strong>${product.name}</strong><b>${game.stock(product.name)}<small> left</small></b><span class="im-stock-label">${status(product.name) === 'good' ? 'Healthy' : status(product.name) === 'low' ? 'Order soon' : 'Out of stock'}${incoming(product.name) ? ' · +' + incoming(product.name) + ' coming' : ''}</span></button>`).join('');
+    app.querySelectorAll('[data-product]').forEach(button => button.onclick = () => {
+      selected = button.dataset.product;
+      if (tutorial === 1 && selected === 'Oat Milk') tutorial = 2;
+      drawProducts(); drawOrder(); drawGuide(); setView('order');
+    });
+  }
+  function drawOrder() {
+    const product = item(selected);
+    const free = Math.max(0, product.cap - game.stock(selected) - incoming(selected));
+    $('#im-order-card').innerHTML = `<div class="im-company" style="--company:${product.color}"><span>${product.icon}</span><div><small>Your ${product.name} supplier</small><h3>${product.company}</h3><b>🚚 ${product.lead} café seconds</b></div></div><h3 class="im-chosen">${product.name}</h3><div class="im-facts"><span><b id="im-order-stock">${game.stock(selected)}</b> on shelf</span><span><b id="im-incoming">${incoming(selected)}</b> on the way</span><span><b>${money(product.cost)}</b> each</span></div><form id="im-buy-form"><label for="im-qty">How many?</label><div class="im-quantity"><button type="button" id="im-less" aria-label="Decrease quantity">−</button><input id="im-qty" type="number" min="1" max="${Math.max(1,free)}" step="1" required value="${tutorial === 2 ? 4 : Math.min(Math.max(1,game.suggested(selected)),Math.max(1,free))}"><button type="button" id="im-more" aria-label="Increase quantity">+</button></div><div class="im-picks">${[2,4,8].map(quantity => `<button type="button" data-quantity="${quantity}">${quantity}</button>`).join('')}</div><div id="im-quote" class="im-quote"></div><button class="im-primary" id="im-buy" type="submit">Place order →</button><p id="im-error" role="status"></p></form><details><summary>Stock & freshness</summary><p>${product.cap} maximum on shelf. ${product.group === 'bakery' ? 'Bakery expires after about one shift.' : product.group === 'milk' ? 'Milk stays fresh for about two shifts.' : 'Check stock before placing another order.'} A small delivery fee of $0.25 applies.</p></details>`;
+    $('#im-less').onclick = () => changeQuantity(-1);
+    $('#im-more').onclick = () => changeQuantity(1);
+    app.querySelectorAll('[data-quantity]').forEach(button => button.onclick = () => { $('#im-qty').value = Math.min(Number(button.dataset.quantity),Math.max(1,free)); quote(); });
+    $('#im-qty').oninput = quote;
+    $('#im-buy-form').onsubmit = event => {
+      event.preventDefault();
+      if (tutorial !== null && tutorial !== 2) return;
+      if (tutorial === 2 && Number($('#im-qty').value) !== 4) { $('#im-error').textContent = 'For practice, order 4 Oat Milk.'; return; }
+      const error = game.purchase({[selected]:Number($('#im-qty').value)},product.company);
+      if (error) { $('#im-error').textContent = error; return; }
+      $('#im-error').textContent = '✓ Ordered! Watch the delivery dock.';
+      if (tutorial === 2) tutorial = 3;
+      update();
+    };
+    quote();
+  }
+  function changeQuantity(delta) { const input = $('#im-qty'); input.value = Math.max(1,Math.min(Number(input.max),Number(input.value) + delta)); quote(); }
+  function quote() {
+    if (!$('#im-qty')) return;
+    const quantity = Number($('#im-qty').value), product = item(selected);
+    $('#im-quote').textContent = `${money(game.quote({[selected]:Number.isFinite(quantity) ? quantity : 0},product.company))} total · ${product.lead}s delivery`;
+  }
+
+  function drawGuide() {
+    const guide = $('#im-guide'); guide.hidden = tutorial === null;
+    app.querySelectorAll('.im-highlight').forEach(node => node.classList.remove('im-highlight'));
+    if (tutorial === null) return;
+    const steps = [
+      ['Find the right shelf','Click Milk. Yellow and red items need your attention.','[data-category="milk"]'],
+      ['Pick low stock','Oat Milk has only 2 left. Click its card.','[data-product="Oat Milk"]'],
+      ['Order from its company','Oatfield supplies Oat Milk. Buy 4 portions for $1.45. Click Place order.','.im-order'],
+      ['Deliveries take time','The order takes 25 café seconds. Click Receive practice delivery to move time forward.','.im-dock'],
+      ['You did it!','Oat Milk is restocked. Your real shift starts with fresh stock and cash.','.im-stock']
+    ];
+    const [title,text,target] = steps[tutorial];
+    guide.innerHTML = `<div><small>GUIDED PRACTICE · ${tutorial + 1} / 5</small><b>${title}</b><p>${text}</p></div>${tutorial === 3 ? '<button data-practice="receive" class="im-primary">Receive practice delivery →</button>' : tutorial === 4 ? '<button data-practice="finish" class="im-primary">See my mission →</button>' : '<span>Clock paused · practice cash only</span>'}`;
+    $(target)?.classList.add('im-highlight');
+    guide.querySelector('[data-practice="receive"]')?.addEventListener('click', () => {
+      // No practice customers: teach delivery timing without costing the player a sale.
+      game.clock = game.deliveries[0].eta; game.receive(game.deliveries[0].id); tutorial = 4;
+      drawOrder(); update();
+      dialog('Supplies arrived!', '<div class="im-delivery-art">🚚 → 🥛</div><p><b>+4 Oat Milk</b> from Oatfield is on your shelf. You now have 6 portions.</p>', '<button data-action="practice-close" class="im-primary">Great! →</button>');
+    });
+    guide.querySelector('[data-practice="finish"]')?.addEventListener('click', () => {
+      game = new InventorySim(); window.inventoryGame = game; tutorial = null; modalResume = false;
+      render(); mission();
+    });
+  }
+
+  function update() {
+    if (!game || !$('.im-game')) return;
+    $('#im-clock').textContent = tutorial !== null ? 'Practice' : `${game.label} · ${time(300 - game.elapsed)}`;
+    $('#im-cash').textContent = money(game.cash);
+    $('#im-served').textContent = `${game.metrics.served}/${game.schedule.length}`;
+    $('#im-profit').textContent = money(profit());
+    $('#im-start').textContent = game.ended ? 'Shift complete' : game.running ? 'Pause' : game.elapsed ? 'Resume' : 'Start shift';
+    $('#im-start').disabled = tutorial !== null || game.ended;
+    $('#im-phase').textContent = tutorial !== null ? 'Practice order · no real spending' : game.ended ? 'Shift finished' : !game.running ? 'Planning · time is paused' : game.elapsed >= 95 && game.elapsed <= 180 ? 'Rush time · watch your supplies!' : 'Café open · stock is being used';
+    $('#im-notice').textContent = tutorial !== null ? '' : game.messages[0];
+    app.querySelectorAll('[data-speed]').forEach(button => { button.setAttribute('aria-pressed',Number(button.dataset.speed) === speed); button.disabled = tutorial !== null || game.ended; });
+    $('#im-speed-note').textContent = `${speed}× · ${speed === 1 ? 'Time to plan each decision' : speed === 3 ? 'Steady pace: 3 café seconds per second' : 'Fast pace: stock and deliveries move 6× faster'}`;
+    const pending = game.deliveries.filter(delivery => !delivery.received);
+    $('#im-jump').disabled = !pending.length || tutorial !== null || game.ended;
+    $('#im-pending').textContent = `${pending.length} pending`;
+    $('#im-deliveries').innerHTML = pending.length ? pending.slice(0,4).map(delivery => {
+      const name = Object.keys(delivery.cart)[0], product = item(name);
+      return `<div class="im-delivery"><span style="color:${product.color}">${product.icon}</span><div><b>${delivery.cart[name]} ${name}</b><small>${delivery.supplier} · ${time(delivery.eta - game.clock)}</small><progress max="${delivery.lead}" value="${Math.max(0,delivery.lead - (delivery.eta - game.clock))}"></progress></div></div>`;
+    }).join('') + (pending.length > 4 ? `<p>+${pending.length - 4} more deliveries tracked</p>` : '') : '<div class="im-empty-dock"><span>🚚</span><b>Nothing on the way</b><p>Click a product to place an order.</p></div>';
+    $('#im-buy').disabled = game.ended || (tutorial !== null && tutorial !== 2);
+    $('#im-order-stock').textContent = game.stock(selected); $('#im-incoming').textContent = incoming(selected);
+    $('#im-qty').max = Math.max(1,item(selected).cap - game.stock(selected) - incoming(selected));
+    $('#im-results').hidden = !game.ended;
+    drawProducts(); drawGuide();
+    if (game.ended && !reportShown && !$('#inventory-modal')) { reportShown = true; report(); }
+  }
+
+  function checkDeliveries() {
+    if (!game || tutorial !== null || $('#inventory-modal') || game.ended) return;
+    const arrived = game.deliveries.filter(delivery => !delivery.received && delivery.eta <= game.clock);
+    if (!arrived.length) return;
+    modalResume = game.running; game.running = false;
+    arrived.forEach(delivery => game.receive(delivery.id));
+    dialog('Supplies arrived!', `<div class="im-delivery-art">🚚 📦</div><p>${arrived.map(delivery => Object.entries(delivery.cart).map(([name,qty]) => `<b>+${qty} ${name}</b> from ${delivery.supplier}`).join('<br>')).join('<br>')}</p><p>Your stock is shelved and ready. The clock is paused so you can review it.</p>`, '<button data-action="delivery-close" class="im-primary">Back to my shift →</button>');
+    update();
+  }
+  function advanceToDelivery() {
+    if (tutorial !== null || game.ended) return;
+    const pending = game.deliveries.filter(delivery => !delivery.received);
+    if (!pending.length) return;
+    const target = Math.min(...pending.map(delivery => delivery.eta));
+    game.running = true;
+    // Advance the actual simulation, including customers, stock use, and spoilage.
+    while (game.clock < target && !game.ended) game.tick(Math.min(1,target - game.clock));
+    checkDeliveries(); update();
+  }
+  function report() {
+    const result = game.reports.at(-1); if (!result) return;
+    const points = [result.served / result.arrived >= .9,result.waste < 5,result.profit > 0].filter(Boolean).length * 5;
+    dialog(`${result.label} complete · ${points}/15`, `<div class="im-three"><span><b>${result.served}/${result.arrived}</b> served</span><span><b>${money(result.profit)}</b> profit</span><span><b>${money(result.waste)}</b> wasted</span></div><p>${result.stockouts ? 'Next shift: order the low-stock items earlier. Stock must last until delivery arrives.' : 'Your stock kept up with demand. Keep watching freshness next shift.'}</p><details><summary>Full report</summary><p>${result.lost} lost sales · ${money(result.lostSales)} potential revenue lost · ${money(result.purchases)} spent · ${money(result.revenue)} sales. Profit subtracts used ingredients, waste, and delivery fees. Unused stock remains an asset.</p></details>`, `<button data-action="review">Review stock</button>${game.daypart < 2 ? '<button data-action="next" class="im-primary">Next shift mission →</button>' : '<button data-action="retry" class="im-primary">Play again</button><button data-action="home">Choose role</button>'}`);
+  }
+  function handleAction(action) {
+    closeDialog();
+    if (action === 'tutorial') { game = new InventorySim(); window.inventoryGame = game; category = 'coffee'; tutorial = 0; drawProducts(); drawGuide(); update(); }
+    if (action === 'skip') { modalResume = false; mission(); }
+    if (action === 'plan') { game.running = modalResume; modalResume = false; }
+    if (action === 'resume' || action === 'delivery-close') { game.running = modalResume; modalResume = false; }
+    if (action === 'delivery-close') drawOrder();
+    if (action === 'next') { game.next(); reportShown = false; modalResume = false; render(); mission(); }
+    if (action === 'retry') startInventory();
+    if (action === 'home') { roles(); return; }
+    update();
+  }
+  function loop(now) {
+    const dt = lastFrame ? Math.min((now - lastFrame) / 1000,.1) : 0; lastFrame = now;
+    if (game && tutorial === null && !$('#inventory-modal')) { game.tick(dt * speed); checkDeliveries(); }
+    if (game && now - lastPaint > 500) { update(); lastPaint = now; }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  roles();
 })();
