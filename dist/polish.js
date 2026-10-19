@@ -1,0 +1,22 @@
+/* Distinct fictional character roster, ordered tickets and responsive decoration tools. */
+// Reuse the café's illustrated cast so customers share the barista's art direction.
+const oldCharacter=character;
+character=function(index,mood='happy',barista=false){return oldCharacter(index,mood,barista);};
+// Smooth quadratic paths keep sauce continuous even with a coarse mouse or touch sample rate.
+const priorStrokeArt=strokeArt;
+function smoothToppingPath(points){if(!points.length)return '';let d=`M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;for(let i=1;i<points.length-1;i++){const p=points[i],n=points[i+1];d+=` Q${p.x.toFixed(1)} ${p.y.toFixed(1)} ${((p.x+n.x)/2).toFixed(1)} ${((p.y+n.y)/2).toFixed(1)}`;}const end=points.at(-1);return d+` L${end.x.toFixed(1)} ${end.y.toFixed(1)}`;}
+strokeArt=function(stroke){if(!stroke.type.includes('Drizzle'))return priorStrokeArt(stroke);if(!stroke.points.length)return '';const d=smoothToppingPath(stroke.points),caramel=stroke.type==='Caramel Drizzle',color=caramel?'#cc7e20':'#623323';return `<g clip-path="url(#drizzle-surface)"><path d="${d}" stroke="${caramel?'#8b4e14':'#3b1c15'}" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" stroke="${color}" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" stroke="${caramel?'#f4ba58':'#ae7450'}" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".75" transform="translate(-.6 -.8)"/></g>`;};
+const priorOpenToppings=openToppings;
+openToppings=function(){priorOpenToppings();if(stationPanel?.key!=='topping')return;const svg=document.querySelector('#decoration-canvas');svg.querySelector('defs').insertAdjacentHTML('beforeend','<clipPath id="drizzle-surface"><path d="M136 149Q140 117 175 100Q184 69 216 60Q227 31 243 43Q249 69 272 82Q297 93 302 120Q326 129 326 150Q234 187 136 149Z"/></clipPath>');svg.insertAdjacentHTML('beforeend','<path style="display:none" class="drizzle-guide" d="M179 111Q215 98 278 109L170 125L292 138L183 153" fill="none" stroke="#fff8d5" stroke-width="2" stroke-dasharray="5 6" opacity=".7" pointer-events="none"/>');document.querySelector('.topping-legend').innerHTML='<b>Decorate the top</b><span>1. Pick a bottle</span><span>2. Hold and zigzag</span><span>3. Release to stop</span><small>Undo fixes one stroke. Sauces layer over cream.</small>';drawToppings();};
+const priorToppingPoint=toppingPoint;
+toppingPoint=function(ev){const p=priorToppingPoint(ev);if(!p||!toppingTool?.includes('Drizzle'))return p;return p.x>=136&&p.x<=326&&p.y>=45&&p.y<=175?p:null;};
+const priorGesture=startToppingGesture;
+startToppingGesture=function(ev,target){priorGesture(ev,target);const ghost=document.querySelector('.topping-ghost');if(ghost&&toppingTool?.includes('Drizzle'))ghost.classList.add('sauce-bottle');};
+const priorDraw=drawToppings;
+drawToppings=function(){priorDraw();const e=document.querySelector('.drizzle-guide');if(e)e.style.display=toppingTool?.includes('Drizzle')?'':'none';};
+const priorPolishOpen=openStation,priorPolishUpdate=updateStation,priorPolishMain=update;
+openStation=function(k){priorPolishOpen(k);if(!stationPanel||sim.tutorial||!['syrup','milk','coffee'].includes(k))return;document.querySelector('.station-dialog header').insertAdjacentHTML('afterend','<div class="layout-progress" role="status"><span></span><progress max="1" value="0"></progress></div>');updateStation();};
+updateStation=function(){priorPolishUpdate();const e=document.querySelector('.layout-progress');if(e){const improved=sim.upgrades.has('layout'),total=improved?.3:1.5,remaining=Math.max(0,sim.setupUntil-sim.time);e.querySelector('span').textContent=remaining?`Reaching station · ${remaining.toFixed(1)}s`:`${improved?'Compact layout · 1.2s saved':'Standard layout · 1.5s setup'} · ready to pour`;e.querySelector('progress').value=1-remaining/total;}};
+update=function(){priorPolishMain();if(sim&&!sim.tutorial&&!sim.finished&&sim.id>=sim.arrivals.length){document.querySelector('#rush-ribbon').textContent='All customers have arrived · finish their orders';}};
+const priorPolishPreview=preview;
+preview=function(u){if(u.id!=='layout')return priorPolishPreview(u);return '<div class="layout-demo"><b>Standard counter</b><div>① Syrup <span>↔</span> ② Milk <span>↔</span> ③ Coffee</div><small>1.5s reach / setup</small><b>Compact counter</b><div class="compact">① Syrup → ② Milk → ③ Coffee</div><small>0.3s reach / setup · save 1.2s per pour station</small></div>';};
