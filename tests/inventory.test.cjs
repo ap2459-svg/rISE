@@ -207,7 +207,81 @@ function accounting(g){
   const migrated=InventorySim.restore(JSON.stringify(envelope));assert(migrated);
   assert.equal(migrated.cash,old.cash);assert.equal(migrated.stock('Whole Milk'),0);
   assert.equal(migrated.stock('Original Blend'),4);assert(migrated.lots['Original Blend'][0].expires>migrated.day);
-  assert.equal(migrated.tutorialStep(),'stock');assert.equal(JSON.parse(migrated.save()).version,3);
+  assert.equal(migrated.tutorialStep(),'stock');assert.equal(JSON.parse(migrated.save()).version,CONFIG.version);
+  const v3=JSON.parse(new InventorySim(5).save());v3.version=3;delete v3.state.alerts;delete v3.state.metrics.stockLost;delete v3.state.metrics.stockLostRevenue;
+  const current=InventorySim.restore(JSON.stringify(v3));assert(current);assert.equal(current.cash,v3.state.cash);assert.equal(current.lossNotice(),null);
+}
+// Recipe targets allocate shared ingredients once; planning never purchases anything.
+{
+  const g=new InventorySim(42);clear(g);g.day=2;
+  const before=g.save(),plan=g.recipePlan({latte:5});
+  assert.equal(plan.lines.find(l=>l.name==='Original Blend').qty,1);
+  assert.equal(plan.lines.find(l=>l.name==='Whole Milk').qty,5);
+  assert.equal(plan.lines.find(l=>l.name==='Vanilla').qty,2);
+  assert.equal(plan.lines.some(l=>l.name==='Straw'),false,'uses actual recipe');
+  assert.equal(g.save(),before,'draft has no inventory, cash or RNG side effects');
+  assert.equal(g.recipePlan({latte:5},plan.lines).lines.length,0,'repeated click does not duplicate');
+  const second=g.recipePlan({latte:5,caramel:5},plan.lines,'budget',true);
+  assert.equal(second.lines.find(l=>l.name==='Original Blend').qty,5,'shared coffee covers ten drinks');
+  assert.equal(second.lines.find(l=>l.name==='Cup').qty,5);
+  assert.equal(second.lines.find(l=>l.name==='Original Blend').supplier,'quick','shared cart keeps selected supplier');
+  assert.equal(second.lines.find(l=>l.name==='Almond Milk').supplier,'budget');
+  const merged=plan.lines.map(l=>({...l}));
+  for(const l of second.lines){const existing=merged.find(c=>c.name===l.name&&c.frozen===l.frozen);if(existing)existing.qty+=l.qty;else merged.push(l);}
+  assert.equal(new Set(merged.map(l=>l.name)).size,merged.length);assert.equal(merged.find(l=>l.name==='Original Blend').qty,6);
+  assert.equal(g.recipePlan({latte:5,caramel:5},merged).lines.length,0);
+  assert.equal(g.recipePlan({oat:5}),null,'locked products are not planned early');
+  for(const n of [0,-1,2.5,NaN,101])assert.equal(g.recipePlan({latte:n}),null);
+  const capped=g.recipePlan({latte:100});assert(capped.unfilled>0);
+  for(const l of capped.lines)assert(l.qty+g.occupied(l.name)+g.incoming(l.name)<=g.capacity(l.name));
+  g.addLot('Whole Milk',8,.45,0,false,.94,g.day);assert.equal(g.recipePlan({latte:5}).rows.find(r=>r.name==='Whole Milk').stock,0,'expired milk excluded');
+}
+{
+  const g=new InventorySim(42);clear(g);
+  g.placeOrder([line('Whole Milk',3),line('Cup',5,'budget')]);
+  assert.equal(g.recipePlan({latte:5}).lines.find(l=>l.name==='Whole Milk').qty,2,'usable inbound stock counts');
+  assert.equal(g.recipePlan({latte:5}).lines.find(l=>l.name==='Cup').qty,5,'tomorrow delivery cannot serve today');
+  g.advancePlanning();const delivery=g.deliveries.find(d=>d.arrived);assert(delivery);
+  delivery.lines[0].expires=g.day;
+  assert.equal(g.recipePlan({latte:5}).lines.find(l=>l.name==='Whole Milk').qty,5,'expired uncollected stock excluded');
+  delivery.cancelled=true;assert.equal(g.usableIncoming('Whole Milk'),0);
+  const bakery=new InventorySim(12);clear(bakery);bakery.setStrategy('inhouse');bakery.addLot('Cookie',3,.4,7,true);
+  const frozen=bakery.recipePlan({cookie:5}).lines.find(l=>l.name==='Cookie');assert.equal(frozen.qty,5);assert(frozen.frozen,'buys enough portions for full oven batches');
+  bakery.ovenBroken=true;assert(bakery.recipePlan({cookie:5}).blocked,'broken oven requires a strategy decision');
+}
+// Near-expiry alerts use campaign days, persist dismissal, and allow a new lot to warn.
+{
+  const g=new InventorySim(12);clear(g);g.addLot('Whole Milk',4,.45,2);
+  assert.equal(g.expiryNotice(),null);g.clock+=8000;assert.equal(g.expiryNotice(),null);
+  g.day++;assert.equal(g.expiryNotice().name,'Whole Milk');assert.equal(g.expiryNotice().days,1);
+  g.dismissExpiry('Whole Milk');assert.equal(g.expiryNotice(),null);
+  assert.equal(InventorySim.restore(g.save()).expiryNotice(),null,'dismissal survives reload');
+  assert.equal(g.expiringItems()[0].qty,4,'stockroom warning remains after dismissal');
+  g.addLot('Whole Milk',2,.45,1);assert(g.expiryNotice());g.day++;assert.equal(g.expiryNotice(),null);assert.equal(g.stock('Whole Milk'),0);
+}
+// Loss alerts come only from actual failed customer orders and never consume stock.
+{
+  const g=new InventorySim(16);clear(g);g.skipTutorial();g.menu.cookie.enabled=false;g.phase='shift';g.briefed=true;g.introSeen=true;
+  for(const name of MENU.find(p=>p.id==='latte').recipe)if(name!=='Whole Milk')g.addLot(name,20,.4,14);
+  for(let i=0;i<3;i++)g.customer();
+  const waiting=g.orders.filter(o=>o.status==='waiting');assert(waiting.length);
+  const inventory=JSON.stringify(g.lots),cash=g.cash;
+  assert.equal(g.lossNotice(),null,'waiting is not a lost sale');
+  g.clock+=CONFIG.patience;g.processCustomers();
+  const notice=g.lossNotice();assert(notice);assert.equal(notice.count,waiting.length);
+  assert.deepEqual(notice.missing,['Whole Milk']);assert.deepEqual(notice.products,['latte']);
+  near(notice.revenue,waiting.reduce((n,o)=>n+o.price,0),'loss revenue is actual quoted order total');
+  assert.equal(JSON.stringify(g.lots),inventory);assert.equal(g.cash,cash);
+  const losses=g.metrics.lost;waiting.forEach(o=>g.lose(o));assert.equal(g.metrics.lost,losses,'same order cannot lose twice');
+  assert.equal(InventorySim.restore(g.save()).lossNotice().count,notice.count);
+  fixtures['stock-loss']=g.save();g.dismissLosses();assert.equal(InventorySim.restore(g.save()).lossNotice(),null);
+  g.customer();const priceOrder=g.orders.at(-1);if(priceOrder.status==='waiting')g.lose(priceOrder,'price');assert.equal(g.lossNotice(),null,'price loss is not a stock alert');
+  g.finish();assert.equal(g.reports[0].stockLost,waiting.length);near(g.reports[0].stockLostRevenue,notice.revenue,'summary stock losses');
+}
+{
+  const g=new InventorySim(8);clear(g);g.skipTutorial();g.introSeen=true;g.briefed=true;
+  g.addLot('Whole Milk',4,.45,1);fixtures.expiry=g.save();
+  fixtures['new-day-one']=new InventorySim(19725).save();
 }
 // Ratings reflect real quality, wait and availability outcomes in either direction.
 {

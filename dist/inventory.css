@@ -159,8 +159,7 @@
 .cr-chart-card button{font-size:10px;padding:6px}
 .cr-insight{background:#e7ecdc;border-left:4px solid #547c55;border-radius:6px;padding:10px 13px;display:flex;gap:15px;font-size:11px;align-items:center}
 .cr-insight b{flex-shrink:0;color:#30583b}.cr-insight span{font-size:11px}
-.cr-toast{position:fixed;bottom:85px;left:50%;transform:translateX(-50%);z-index:12000;max-width:min(650px,88vw);border:2px solid #7fa17a;background:#f1f5dd;color:#234d37;box-shadow:0 8px 30px #33281530;padding:13px 20px;border-radius:14px;font-weight:800;text-align:center;pointer-events:none;animation:cr-pop .2s ease}
-.cr-error{color:#9a372c!important}.cr-toast.cr-error{background:#fff0e8;border-color:#c17662}
+.cr-error{color:#9a372c!important}
 .cr-overlay{position:fixed;inset:0;background:#30261bb0;z-index:10000;display:grid;place-items:center;padding:18px;backdrop-filter:blur(3px)}
 .cr-dialog{background:#fff7e7;border:3px solid #ad8758;border-radius:24px;box-shadow:0 24px 100px #2b1a0b55;width:min(710px,96vw);max-height:94dvh;overflow:auto;padding:26px;animation:cr-pop .22s ease}
 .cr-dialog>h2{font-size:29px;line-height:1.2;margin:8px 0 17px}
@@ -356,3 +355,69 @@
 @media(prefers-reduced-motion:reduce){.cr-game *,.cr-overlay *{animation:none!important}}
 
 .cr-intro blockquote{font-family:Patrick Hand,sans-serif}
+
+/* Compact dialogs retain their footer when an unusually large order needs scrolling. */
+.cr-dialog{display:flex;flex-direction:column;width:min(650px,96vw);max-height:calc(100dvh - 28px);padding:18px 20px;border-radius:20px}
+.cr-dialog>h2{font-size:26px;line-height:1.15;margin:5px 0 10px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.cr-dialog>.cr-kicker{font-size:8px;flex-shrink:0}.cr-dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 2px 3px}
+.cr-dialog footer{margin-top:12px;padding-top:9px;border-top:1px solid #d5bda0;flex-shrink:0;gap:8px}
+.cr-dialog footer button{padding:9px 12px;min-height:38px;font-size:12px}
+.cr-dialog svg{width:30px;height:32px;flex-shrink:0;vertical-align:middle}.cr-dialog>h2 svg{width:28px;height:30px}
+.cr-dialog .cr-stars svg{width:15px;height:15px}.cr-dialog p{margin:8px 0;font-size:12px;line-height:1.45}
+.cr-dialog #cr-dialog-error:empty{display:none}.cr-dialog .cr-note{font-size:11px;padding:8px;line-height:1.45}
+.cr-dialog .cr-stat-row{margin:9px 0;gap:7px}.cr-dialog .cr-stat-row>span{padding:8px 6px}.cr-dialog .cr-stat-row b{font-size:21px}
+.cr-dialog .cr-character{padding:10px;gap:10px}.cr-dialog .cr-character>span:has(svg){font-size:16px}
+.cr-dialog .cr-character p{font-size:12px}.cr-dialog .cr-character .cr-customer-art{width:44px;height:52px}
+.cr-dialog .cr-tour-summary{padding:10px;gap:12px}.cr-dialog .cr-tour-summary svg{width:38px;height:40px}
+.cr-dialog .cr-goals{gap:6px;margin:9px 0}.cr-dialog .cr-goals li{padding:7px 10px;font-size:12px}
+.cr-dialog .cr-delivery-art{height:56px;padding:5px;gap:16px}.cr-dialog .cr-delivery-art>svg{width:60px;height:43px}
+.cr-dialog .cr-delivery-art>span svg{width:32px;height:32px}.cr-dialog .cr-review-cart{max-height:220px;gap:3px 12px}
+.cr-dialog .cr-review-cart>span{padding:4px 0}.cr-dialog .cr-review-cart svg{width:22px;height:25px}
+.cr-dialog .cr-lots>div{padding:7px;gap:7px}.cr-dialog .cr-lots svg{width:27px;height:30px}.cr-dialog .cr-lots button{min-height:34px;min-width:34px;padding:6px}
+.cr-dialog .cr-lots button svg{width:17px;height:19px}.cr-dialog .cr-story-art{height:112px}
+.cr-dialog .cr-shop{font-size:22px;padding:10px 26px 20px}.cr-dialog .cr-intro blockquote,.cr-intro blockquote{margin:10px 4px;font-size:16px}
+.cr-dialog .cr-unpack-bundle{padding:10px;gap:14px}.cr-dialog .cr-unpack-bundle svg{width:38px;height:40px}
+.cr-dialog .cr-unpack-bundle>span{font-size:11px;gap:3px}.cr-dialog .cr-storage-targets{gap:10px;margin:10px 0}
+.cr-dialog .cr-storage-targets button{min-height:56px;padding:9px;gap:10px}.cr-dialog .cr-storage-targets svg{width:30px;height:34px}
+.cr-dialog input,.cr-dialog select{font:700 12px Nunito,sans-serif;color:#40271b;border:1.5px solid #a18a70;border-radius:8px;background:#fffaf0;padding:7px;max-width:100%}
+.cr-dialog input:focus-visible,.cr-dialog select:focus-visible{outline:3px solid #2583c3;outline-offset:2px}
+.cr-serving-plan{padding:9px 10px;background:#f0e3cd;border-radius:10px;margin-bottom:9px}
+.cr-serving-plan>label{display:block;font-weight:800;font-size:12px;margin-bottom:7px}.cr-serving-plan>div{display:flex;align-items:center;gap:7px}
+.cr-serving-plan button{padding:7px 13px;min-height:35px}.cr-serving-plan input{width:66px}.cr-serving-plan label{font-size:11px}
+.cr-plan-rows{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px}.cr-plan-rows>div{display:flex;align-items:center;gap:6px;border:1px solid #d4c09e;border-radius:8px;padding:7px;background:#fff7e7;min-width:0}
+.cr-plan-rows>div>span{flex:1;min-width:0}.cr-plan-rows b{display:block;font-size:11px}.cr-plan-rows small{display:block;font-size:9px;line-height:1.4}
+.cr-plan-rows strong{font-size:11px;color:#285b46}.cr-dialog .cr-plan-rows svg{width:25px;height:28px}.cr-dialog .cr-plan-company{font-size:10px;color:#655039}
+.cr-recipe-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cr-recipe-picker button{display:flex;align-items:center;gap:7px;text-align:left;padding:9px;font-size:12px}
+.cr-dialog .cr-recipe-picker img,.cr-dialog .cr-recipe-picker svg{width:28px;height:36px;object-fit:contain}
+.cr-cart-form{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.cr-cart-form>label{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.cr-cart-form>label:last-child{flex-direction:row;align-items:center}.cr-cart-form input[type=number]{width:80px}
+.cr-game .cr-cart-lines .cr-cart-edit{padding:5px;min-width:34px;min-height:30px;font-size:11px;white-space:nowrap}
+.cr-feedback-message{font-size:12px;font-weight:800;line-height:1.4}
+#cr-feedback>span>svg{width:28px;height:32px}
+.cr-notice{display:flex;align-items:flex-start;gap:8px;width:100%;border-left:3px solid #b47c1d;padding:5px 8px;background:#fff1c9;border-radius:6px}
+.cr-notice>div{min-width:0;flex:1}.cr-loss-notice{border-color:#b65037;background:#ffeadf}
+#cr-feedback .cr-notice>svg{width:22px;height:25px;margin-top:2px}#cr-feedback .cr-notice b{font-size:12px}
+#cr-feedback .cr-notice p{font-size:11px;margin:2px 0;line-height:1.35}#cr-feedback .cr-notice small{font-size:10px;white-space:normal;max-width:none;line-height:1.35;overflow:visible}
+.cr-notice-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.cr-game .cr-notice-actions button{padding:5px 8px;font-size:10px;min-height:30px}
+.cr-game .cr-stock-item.expiring-soon{border-color:#bd8a1d;background:#fff0bd}.cr-expiry-tag{color:#774d09;font-weight:800}.cr-expiry-tag svg{width:13px;height:14px}
+@media(max-width:800px){
+  .cr-dialog{padding:15px;width:min(620px,96vw)}.cr-dialog>h2{font-size:24px}
+  .cr-live:has(.cr-notice){grid-template-columns:minmax(0,1fr) 145px;gap:7px}.cr-live:has(.cr-notice) #cr-live-stats{display:none}
+  #cr-feedback .cr-notice b{font-size:11px}#cr-feedback .cr-notice p{font-size:10px}.cr-notice-actions{gap:4px}
+  .cr-game .cr-notice-actions button{font-size:9px;padding:5px 6px}.cr-game .cr-cart-lines .cr-cart-edit{font-size:10px;padding:4px;min-width:29px}
+}
+@media(max-width:520px){
+  .cr-dialog{padding:12px;max-height:calc(100dvh - 18px);width:100%}.cr-dialog>h2{font-size:23px;margin-bottom:8px}
+  .cr-dialog footer{margin-top:8px;padding-top:8px}.cr-dialog footer button{font-size:11px;padding:8px;min-height:36px}
+  .cr-plan-rows{gap:5px;grid-template-columns:1fr}.cr-plan-rows>div{padding:4px 6px}.cr-plan-rows small{font-size:9px}
+  .cr-dialog .cr-plan-rows svg{width:23px;height:25px}.cr-serving-plan{padding:8px}.cr-serving-plan>div{gap:5px}
+  .cr-serving-plan button{padding:7px 11px}.cr-serving-plan input{width:58px}.cr-dialog .cr-plan-company{font-size:9px}
+  .cr-recipe-picker{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.cr-recipe-picker button{padding:7px;font-size:11px}
+  .cr-dialog .cr-review-cart{gap:3px 8px}.cr-dialog .cr-review-cart svg{width:20px;height:23px}
+  .cr-live:has(.cr-notice){grid-template-columns:minmax(0,1fr) 100px;padding:6px;gap:5px}
+  .cr-notice{padding:5px;gap:4px}#cr-feedback .cr-notice>svg{width:16px;height:19px}
+  #cr-feedback .cr-notice small{font-size:9px}#cr-feedback .cr-notice p{font-size:10px}
+  .cr-game .cr-notice-actions button{font-size:9px;min-height:28px;padding:4px 6px}.cr-feedback-message{font-size:10px}
+  .cr-live:has(.cr-notice) #cr-dock{padding:5px;font-size:12px}.cr-live:has(.cr-notice) #cr-dock small{margin-left:0}
+  .cr-draft{flex-wrap:wrap}.cr-draft button{flex:1}.cr-stock-item .cr-expiry-tag{font-size:8px}
+}

@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const CONFIG = Object.freeze({
-    version:3, days:7, shiftSeconds:240, openingCash:-500, creditLimit:750,
+    version:4, days:7, shiftSeconds:240, openingCash:-500, creditLimit:750,
     openingReputation:20, dailyOverhead:14, overnightSeconds:75,
     patience:38, bakeSeconds:24, bakeBatch:4, bakeConversion:3.4,
     arrivalIntervals:[15,13,11,11,10,6.8,6.5], serviceSeconds:6, seed:19725
@@ -63,7 +63,7 @@
   const sum=values=>values.reduce((a,b)=>a+b,0);
   const newMetrics=()=>({
     arrived:0,served:0,lost:0,revenue:0,cogs:0,waste:0,wasteUnits:0,purchases:0,operating:0,conversion:0,refunds:0,
-    stockouts:0,lostSales:0,priceLost:0,menuLost:0,satisfactionTotal:0,waitTotal:0,qualityTotal:0,
+    stockouts:0,lostSales:0,stockLost:0,stockLostRevenue:0,priceLost:0,menuLost:0,satisfactionTotal:0,waitTotal:0,qualityTotal:0,
     requested:{},demand:{},sold:{},missing:{},lostByItem:{},wasteByItem:{},deliveries:0,onTime:0,correct:0,
     cleared:0,stockSamples:0,stockValueSum:0
   });
@@ -76,6 +76,7 @@
       this.badges=[]; this.rewards={}; this.xp=0;
       this.menu=Object.fromEntries(MENU.map(p=>[p.id,{enabled:['latte','cookie'].includes(p.id),price:p.price}]));
       this.strategy='hybrid'; this.serial=0; this.supplierStats={};
+      this.alerts={dismissedExpiry:[],losses:[]};
       this.tutorial={active:true,stockOpened:false,inspected:false,missing:false,suppliersOpened:false,compared:[],cartAdded:false,reviewed:false,ordered:false,shelved:false,menuSeen:false,recipeSeen:false,trendsSeen:false,finished:false,skipped:false};
       this.notes=[]; this.reactions=[]; this.introSeen=false; this.sound=true; this.lastExplanation='';
       // The previous manager's spoiled goods are already included in the inherited debt.
@@ -123,6 +124,27 @@
     occupied(name) { return sum((this.lots[name]||[]).map(l=>l.qty))+sum(this.batches.filter(b=>b.name===name).map(b=>b.qty)); }
     capacity(name) { return Math.floor(BY_NAME[name].cap*(this.upgrades.includes('storage')?1.5:1)); }
     incoming(name) { return sum(this.deliveries.filter(d=>!d.shelved).flatMap(d=>d.lines.filter(l=>l.name===name).map(l=>l.qty))); }
+    usableIncoming(name,frozen=false) {
+      return sum(this.deliveries.filter(d=>!d.shelved&&!d.cancelled&&d.dueDay<=this.day).flatMap(d=>d.lines
+        .filter(l=>l.name===name&&!!l.frozen===frozen&&!l.written&&(!d.arrived||l.expires>this.day)).map(l=>l.qty)));
+    }
+    expiringItems() {
+      return ITEMS.filter(i=>i.group!=='supplies').flatMap(i=>{
+        const lots=this.lots[i.name].filter(l=>l.qty>0&&!l.written&&l.expires-this.day===1);
+        return lots.length?[{name:i.name,days:1,qty:sum(lots.map(l=>l.qty)),keys:lots.map(l=>`${l.id}:${l.expires}`)}]:[];
+      });
+    }
+    expiryNotice() { return this.expiringItems().find(i=>i.keys.some(k=>!this.alerts.dismissedExpiry.includes(k)))||null; }
+    dismissExpiry(name) {
+      const notice=this.expiringItems().find(i=>i.name===name);if(!notice)return;
+      this.alerts.dismissedExpiry=[...new Set([...this.alerts.dismissedExpiry,...notice.keys])];
+    }
+    lossNotice() {
+      const losses=this.alerts.losses.filter(l=>l.day===this.day&&!l.read);if(!losses.length)return null;
+      const missing=[...new Set(losses.flatMap(l=>l.missing))],products=[...new Set(losses.flatMap(l=>l.products))];
+      return {ids:losses.map(l=>l.id),count:losses.length,revenue:sum(losses.map(l=>l.revenue)),missing,products};
+    }
+    dismissLosses() { this.alerts.losses.filter(l=>l.day===this.day).forEach(l=>{l.read=true;}); }
     inventoryValue() {
       return sum(Object.values(this.lots).flat().filter(l=>!l.written).map(l=>l.qty*l.cost))
         +sum(this.deliveries.filter(d=>!d.shelved).flatMap(d=>d.lines.filter(l=>!l.written).map(l=>l.qty*l.cost)))
@@ -294,6 +316,36 @@
       d.resolved=true;return null;
     }
     activeIngredients() { return [...new Set(MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled).flatMap(p=>p.recipe))]; }
+    // Targets are total servings in this shopping plan, not repeated additions.
+    // Shared stock is allocated once across all recipes; manual cart choices remain intact.
+    recipePlan(targets,cart=[],supplier='quick',express=false) {
+      if(!targets||!Array.isArray(cart)||!this.supplier(supplier))return null;
+      const needs={};
+      for(const [id,servings] of Object.entries(targets)) {
+        const p=MENU.find(p=>p.id===id&&p.day<=this.day);
+        if(!p||!Number.isInteger(servings)||servings<1||servings>100)return null;
+        for(const name of p.recipe)needs[name]=(needs[name]||0)+servings;
+      }
+      const rows=Object.entries(needs).map(([name,required])=>{
+        const bakery=BY_NAME[name].group==='bakery',canBake=bakery&&this.strategy!=='outsource'&&!this.ovenBroken;
+        const frozen=bakery&&this.strategy==='inhouse';
+        const ready=this.stock(name),incoming=this.usableIncoming(name);
+        const baking=sum(this.batches.filter(b=>b.name===name&&(b.day??this.day)+BY_NAME[name].life>this.day).map(b=>b.qty));
+        const cartReady=sum(cart.filter(l=>l.name===name&&!l.frozen).map(l=>l.qty));
+        const frozenTotal=canBake?this.frozen(name)+this.usableIncoming(name,true)+sum(cart.filter(l=>l.name===name&&l.frozen).map(l=>l.qty)):0;
+        const frozenCoverage=Math.floor(frozenTotal/CONFIG.bakeBatch)*CONFIG.bakeBatch;
+        const shortage=Math.max(0,required-ready-incoming-baking-cartReady-frozenCoverage);
+        const wanted=frozen&&shortage?Math.ceil(Math.max(0,required-ready-incoming-baking-cartReady)/CONFIG.bakeBatch)*CONFIG.bakeBatch-frozenTotal:shortage;
+        const space=Math.max(0,this.capacity(name)-this.occupied(name)-this.incoming(name)-sum(cart.filter(l=>l.name===name).map(l=>l.qty)));
+        const qty=Math.min(space,wanted);
+        // Reuse the chosen company for a shared ingredient already in the cart.
+        const existing=cart.find(l=>l.name===name&&!!l.frozen===frozen);
+        return {name,required,stock:ready,incoming,baking,frozenCoverage,inCart:cartReady,qty,unfilled:Math.max(0,wanted-qty),
+          supplier:existing?.supplier||supplier,frozen,express:existing?!!existing.express:!!express};
+      });
+      const blocked=this.ovenBroken&&rows.some(r=>r.frozen&&r.required>r.stock+r.incoming+r.inCart+r.baking)?'The oven is unavailable. Change your bakery strategy before planning pastries for today.':null;
+      return {rows,lines:rows.filter(r=>r.qty>0).map(({name,qty,supplier,frozen,express})=>({name,qty,supplier,frozen,express})),unfilled:sum(rows.map(r=>r.unfilled)),blocked};
+    }
     restockPlan(size=8,supplier='quick') {
       const needs={};
       for(const p of MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled)) for(const name of p.recipe)
@@ -422,7 +474,14 @@
       order.status='lost'; this.metrics.lost++; this.metrics.lostSales+=order.price;
       if(reason==='price') this.metrics.priceLost++;
       else if(reason==='menu') this.metrics.menuLost++;
-      else { const key=this.missing(order)[0]||'Service capacity'; this.metrics.lostByItem[key]=(this.metrics.lostByItem[key]||0)+order.price; }
+      else {
+        const missing=this.missing(order),key=missing[0]||'Service capacity';
+        this.metrics.lostByItem[key]=(this.metrics.lostByItem[key]||0)+order.price;
+        if(missing.length) {
+          this.metrics.stockLost++;this.metrics.stockLostRevenue+=order.price;
+          this.alerts.losses.push({id:order.id,day:this.day,clock:this.clock,missing,products:order.products.slice(),revenue:order.price,read:false});
+        }
+      }
     }
     react(order,text,emotion='happy') {
       this.reactions.unshift({id:order.id,name:order.name,face:order.face,emotion,text}); this.reactions=this.reactions.slice(0,3);
@@ -623,7 +682,12 @@
       try {
         if(typeof serialized!=='string'||serialized.length>1500000) return null;
         const envelope=JSON.parse(serialized),s=envelope.state;
-        if(![2,CONFIG.version].includes(envelope.version)||!s||!Number.isInteger(s.day)||s.day<1||s.day>7) return null;
+        if(![2,3,CONFIG.version].includes(envelope.version)||!s||!Number.isInteger(s.day)||s.day<1||s.day>7) return null;
+        if(envelope.version<4) {
+          s.alerts={dismissedExpiry:[],losses:[]};
+          if(s.metrics)Object.assign(s.metrics,{stockLost:0,stockLostRevenue:0});
+          for(const r of s.reports||[])Object.assign(r,{stockLost:0,stockLostRevenue:0});
+        }
         if(envelope.version===2) {
           for(const [name,lots] of Object.entries(s.lots||{})) for(const l of lots) {
             l.expires=l.expires<=s.clock?s.day:s.day+Math.max(1,Math.ceil((l.expires-s.clock)/(name==='Croissant'||name==='Cookie'?185:360)));
@@ -641,7 +705,9 @@
           if(value&&typeof value==='object') return Object.keys(value).every(k=>!['__proto__','constructor','prototype'].includes(k))&&Object.values(value).every(safe);
           return true;
         };
-        if(!safe(s)||!Number.isInteger(s.seed)||s.seed<0||s.seed>4294967295||
+        if(!safe(s)||!s.alerts||!Array.isArray(s.alerts.dismissedExpiry)||!Array.isArray(s.alerts.losses)||
+          s.alerts.losses.some(l=>!Array.isArray(l.missing)||l.missing.some(n=>!BY_NAME[n])||!Array.isArray(l.products)||l.products.some(id=>!MENU.some(p=>p.id===id))||!Number.isFinite(l.revenue)||l.revenue<0)||
+          !Number.isInteger(s.seed)||s.seed<0||s.seed>4294967295||
           !Number.isFinite(s.cash)||!Number.isFinite(s.clock)||!Number.isFinite(s.elapsed)||
           s.cash < -s.creditLimit-1e-6||s.creditLimit!==CONFIG.creditLimit||
           !['planning','shift','review','complete'].includes(s.phase)||s.clock<0||s.elapsed<0||s.elapsed>CONFIG.shiftSeconds||
