@@ -1,158 +1,616 @@
-/* Inventory Manager only. Clocks use café seconds; demand is sampled as play advances. */
+/* Café Rescue only. Buildless, seeded simulation; no dependency on other game modes. */
 (() => {
-  const groups = {coffee:['Original Blend','Cold Brew','Decaf'],milk:['Almond','Oat Milk','Whole Milk','Cream','Sweet Cream'],syrup:['Vanilla','Caramel','Mocha','Pumpkin Spice','Brown Sugar'],topping:['Whipped Cream','Cinnamon','Chocolate Drizzle','Cold Foam','Caramel Drizzle'],bakery:['Croissant','Breakfast Sandwich','Cookie'],supplies:['Cup','Lid','Straw','Utensil','Bakery Bag','Napkin']};
-  const companies = {
-    'Original Blend':['Rise Roasters','☕','#865a36',25], 'Cold Brew':['Chill Coffee Co.','❄','#327d8e',25], Decaf:['Gentle Bean','☕','#947249',25],
-    Almond:['Almond Grove','✿','#987447',20], 'Oat Milk':['Oatfield','🌾','#a77d36',20], 'Whole Milk':['Meadow Dairy','🥛','#477c64',20], Cream:['Creamery Lane','🥛','#568c80',20], 'Sweet Cream':['Sweet Meadow','🥛','#a46b79',20],
-    Vanilla:['Vanilla House','✿','#94732e',25], Caramel:['Golden Kettle','◆','#b67b2d',25], Mocha:['Cocoa Works','◆','#7a503a',25], 'Pumpkin Spice':['Harvest Spice','✿','#b76535',25], 'Brown Sugar':['Amber Pantry','◆','#94703a',25],
-    'Whipped Cream':['Cloud Creamery','☁','#7c8ba7',20], Cinnamon:['Cinnamon Grove','✿','#a6603c',25], 'Chocolate Drizzle':['Cocoa Ribbon','◆','#795240',25], 'Cold Foam':['Foam & Co.','☁','#5d8b94',20], 'Caramel Drizzle':['Caramel Ribbon','◆','#b08536',25],
-    Croissant:['Butter Fold','🥐','#aa7b42',20], 'Breakfast Sandwich':['Morning Kitchen','🥪','#75854b',20], Cookie:['Cookie Corner','🍪','#ac764b',20],
-    Cup:['CupCraft','☕','#547d64',15], Lid:['SnapSeal','◎','#507f94',15], Straw:['Sip & Stem','╱','#7a9461',15], Utensil:['TableKind','🍴','#7a7f9b',15], 'Bakery Bag':['Paper Parcel','▣','#a78455',15], Napkin:['SoftFold','▧','#8c829f',15]
+  'use strict';
+  const CONFIG = Object.freeze({
+    version:2, days:7, shiftSeconds:240, openingCash:-500, creditLimit:750,
+    openingReputation:18, dailyOverhead:14, overnightSeconds:75,
+    patience:38, bakeSeconds:24, bakeBatch:4, bakeConversion:2.4,
+    arrivalIntervals:[15,13,11,11,10,6.8,6.5], serviceSeconds:6, seed:19725
+  });
+  const GROUPS = {
+    coffee:['Original Blend','Cold Brew','Decaf'],
+    milk:['Almond Milk','Oat Milk','Whole Milk','Cream','Sweet Cream'],
+    syrup:['Vanilla','Caramel','Mocha','Pumpkin Spice','Brown Sugar'],
+    topping:['Whipped Cream','Cinnamon','Chocolate Drizzle','Cold Foam','Caramel Drizzle'],
+    bakery:['Croissant','Breakfast Sandwich','Cookie'],
+    supplies:['Cup','Lid','Straw','Utensil','Bakery Bag','Napkin']
   };
-  const items = Object.entries(groups).flatMap(([group,names]) => names.map((name,index) => ({name,group,cost:group==='bakery'?[.85,1.5,.55][index]:group==='coffee'?.4:group==='milk'?.3:group==='supplies'?[.15,.06,.04,.08,.1,.03][index]:.18,cap:group==='bakery'?16:group==='supplies'?40:24,life:group==='bakery'?170:group==='milk'||['Whipped Cream','Cold Foam'].includes(name)?250:1800,company:companies[name][0],icon:companies[name][1],color:companies[name][2],lead:companies[name][3]})));
-  const names = ['Maya','Lily','Sophie','Ava','Zoe','Noah','Leo','Amir','Ethan','Miles'];
-  const product = name => items.find(item => item.name === name);
+  const ICONS={coffee:'☕',milk:'🥛',syrup:'🍯',topping:'☁',bakery:'🥐',supplies:'📦'};
+  const ITEMS=Object.entries(GROUPS).flatMap(([group,names])=>names.map((name,i)=>({
+    name,group,icon:group==='bakery'?['🥐','🥪','🍪'][i]:group==='supplies'?['🥤','◉','〰','🍴','🛍','▧'][i]:ICONS[group],
+    cost:group==='bakery'?[1.4,2.2,.9][i]:group==='coffee'?.55:group==='milk'?.45:group==='supplies'?[.18,.08,.05,.08,.12,.04][i]:.22,
+    cap:group==='supplies'?64:group==='bakery'?24:40,
+    life:group==='supplies'?100000000:group==='bakery'?185:group==='milk'||['Whipped Cream','Cold Foam'].includes(name)?360:2400
+  })));
+  const BY_NAME=Object.fromEntries(ITEMS.map(i=>[i.name,i]));
+  const SUPPLIERS=[
+    {id:'budget',name:'Budget Beans & Basics',icon:'🐢',color:'#a36b30',multiplier:.72,lead:42,reliability:.78,quality:.76,life:.7,bulk:12,discount:.12,unlock:1,note:'Lowest cost. Shorter dates; more delivery risk.'},
+    {id:'quick',name:'QuickShip Co-op',icon:'🚲',color:'#277565',multiplier:1,lead:22,reliability:.96,quality:.94,life:1,bulk:18,discount:.06,unlock:1,note:'Fast, dependable, small orders welcome.'},
+    {id:'premium',name:'Sunrise Select',icon:'🌞',color:'#8b5e94',multiplier:1.3,lead:32,reliability:.995,quality:1,life:1.5,bulk:16,discount:.1,unlock:2,note:'Longer freshness and happier customers.'}
+  ];
+  const MENU=[
+    {id:'latte',name:'Vanilla Latte',icon:'☕',price:6,day:1,kind:'drink',recipe:['Original Blend','Whole Milk','Vanilla','Cup','Lid','Napkin']},
+    {id:'caramel',name:'Almond Caramel',icon:'🥤',price:6.5,day:2,kind:'drink',recipe:['Original Blend','Almond Milk','Caramel','Cup','Lid','Napkin']},
+    {id:'oat',name:'Oat Milk Cold Brew',icon:'🧋',price:7,day:3,kind:'drink',recipe:['Cold Brew','Oat Milk','Brown Sugar','Cup','Lid','Straw','Napkin']},
+    {id:'decaf',name:'Decaf Cloud',icon:'☁',price:6,day:2,kind:'drink',recipe:['Decaf','Cream','Whipped Cream','Cup','Lid','Napkin']},
+    {id:'mocha',name:'Mocha Melt',icon:'🍫',price:7,day:5,kind:'drink',recipe:['Original Blend','Whole Milk','Mocha','Chocolate Drizzle','Cup','Lid','Napkin']},
+    {id:'pumpkin',name:'Pumpkin Hug',icon:'🎃',price:7,day:5,kind:'drink',recipe:['Original Blend','Oat Milk','Pumpkin Spice','Cinnamon','Cup','Lid','Napkin']},
+    {id:'sweet',name:'Sweet Cream Chill',icon:'🍦',price:7.5,day:5,kind:'drink',recipe:['Cold Brew','Sweet Cream','Cold Foam','Caramel Drizzle','Cup','Lid','Straw','Napkin']},
+    {id:'cookie',name:'Cookie',icon:'🍪',price:3.25,day:1,kind:'bakery',recipe:['Cookie','Bakery Bag','Napkin']},
+    {id:'croissant',name:'Croissant',icon:'🥐',price:4,day:1,kind:'bakery',recipe:['Croissant','Bakery Bag','Napkin']},
+    {id:'sandwich',name:'Breakfast Sandwich',icon:'🥪',price:5.5,day:4,kind:'bakery',recipe:['Breakfast Sandwich','Bakery Bag','Napkin','Utensil']}
+  ];
+  const DAYS=[
+    {title:'The keys are yours',chapter:'REOPEN',face:'😟',text:'Jules: “We have seven days before the landlord closes us down. Let’s make this place safe and serve our first happy customers.”',goals:['Clear the spoiled stock','Compare suppliers and reopen','Sell a small batch of cookies'],concept:'Inventory control',event:'welcome'},
+    {title:'Cheap can get expensive',chapter:'SUPPLY CHAIN',face:'🤔',text:'Jules: “A bargain supplier is calling. A cheap order is only useful if it arrives when we need it.”',goals:['Compare price, dates and reliability','Keep a small safety buffer','Learn from delivery performance'],concept:'Supplier lead time',event:'discount'},
+    {title:'Someone posted our cold brew!',chapter:'FORECAST',face:'🤩',text:'Maya: “Your Oat Milk Cold Brew is trending!” Stock a small batch, watch actual requests, and react. Nobody knows the size of the crowd.',goals:['Prepare the new cold brew recipe','Watch recent demand arrows','Respond to the oat milk spike'],concept:'Safety stock',event:'oat'},
+    {title:'The great bakery debate',chapter:'MAKE OR BUY',face:'🥐',text:'Jules: “Should we bake here, buy from a bakery, or mix both? Our oven and staff can only do so much.”',goals:['Choose a bakery strategy','Account for labor and oven time','Compare profit and availability'],concept:'Make-or-buy analysis',event:'oven'},
+    {title:'What is a latte worth?',chapter:'PRICE LAB',face:'🧐',text:'Maya: “We love the café, but we’re still students.” Test your prices. A bigger margin means little if nobody buys.',goals:['Try the visual price editor','Watch price-related lost sales','Protect profit and reputation'],concept:'Engineering economics',event:'price'},
+    {title:'The school festival',chapter:'RUSH DAY',face:'🎉',text:'Jules: “Big event today! More people are nearby, but traffic is still uncertain.” Prepare supplies, capacity and a backup plan.',goals:['Build a sensible safety buffer','Consider a helper or smaller menu','Handle a rush decision'],concept:'Resource allocation',event:'rush'},
+    {title:'One last chance to rISE',chapter:'THE COMEBACK',face:'💪',text:'Jules: “The landlord is coming after the shift. Let’s prove this café can earn its place in the neighborhood.”',goals:['Improve the recovery balance','Keep customers coming back','Finish with useful stock, not waste'],concept:'Continuous improvement',event:'final'}
+  ];
+  const UPGRADES=[
+    {id:'fridge',name:'Better refrigerator',icon:'❄',cost:45,day:2,effect:'New milk and fresh bakery last 50% longer.'},
+    {id:'storage',name:'Organized shelving',icon:'▤',cost:30,day:2,effect:'50% more storage; easier FIFO rotation.'},
+    {id:'tracker',name:'Inventory tracker',icon:'📡',cost:22,day:3,effect:'Live low-stock alerts and a reorder-cart shortcut.'},
+    {id:'contract',name:'Supplier partnership',icon:'🤝',cost:38,day:3,effect:'+10 points supplier reliability, up to 100%.'},
+    {id:'oven',name:'Second bakery rack',icon:'♨',cost:48,day:4,effect:'Two batches at once; baking takes 16 seconds.'},
+    {id:'ordering',name:'Combined ordering',icon:'📱',cost:26,day:4,effect:'Half the shipping fees; 5 seconds off lead times.'},
+    {id:'energy',name:'Efficient equipment',icon:'🌿',cost:38,day:5,effect:'Daily operating cost drops by $5; baking costs $0.80 less.'}
+  ];
+  const clone=value=>JSON.parse(JSON.stringify(value));
+  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+  const sum=values=>values.reduce((a,b)=>a+b,0);
+  const newMetrics=()=>({
+    arrived:0,served:0,lost:0,revenue:0,cogs:0,waste:0,wasteUnits:0,purchases:0,operating:0,conversion:0,refunds:0,
+    stockouts:0,lostSales:0,priceLost:0,menuLost:0,satisfactionTotal:0,waitTotal:0,qualityTotal:0,
+    requested:{},demand:{},sold:{},missing:{},lostByItem:{},wasteByItem:{},deliveries:0,onTime:0,correct:0,
+    cleared:0,stockSamples:0,stockValueSum:0
+  });
   class InventorySim {
-    constructor(random = Math.random) {
-      this.random = random; this.clock = 0; this.daypart = 0; this.cash = 90; this.debt = 35;
-      this.running = false; this.ended = false; this.reports = []; this.deliveries = []; this.lots = {};
-      this.orders = []; this.messages = []; this.serial = 0; this.deliveryCount = 0; this.history = [];
-      this.nextSample = 0; this.totalWaste = 0; this.xp = 0; this.badges = []; this.quests = {};
-      this.starterUsed = false; this.featuredBakery = null; this.oven = null; this.upgrade = null; this.pendingEvent = null;
-      items.forEach(item => { this.lots[item.name] = []; });
-      // The inherited write-off is already in the $35 opening deficit. Never charge it twice.
-      for (const [name,qty] of [['Oat Milk',4],['Whole Milk',3],['Croissant',3],['Cookie',4]]) this.lots[name].push({qty,cost:product(name).cost,expires:0,accounted:true,inherited:true});
-      this.begin();
+    constructor(seed=Date.now()) {
+      this.seed=(Number(seed)>>>0)||CONFIG.seed;
+      this.day=1; this.clock=0; this.cash=CONFIG.openingCash; this.creditLimit=CONFIG.creditLimit;
+      this.reputation=CONFIG.openingReputation; this.lots=Object.fromEntries(ITEMS.map(i=>[i.name,[]]));
+      this.deliveries=[]; this.batches=[]; this.reports=[]; this.history=[]; this.upgrades=[];
+      this.badges=[]; this.rewards={}; this.xp=0;
+      this.menu=Object.fromEntries(MENU.map(p=>[p.id,{enabled:['latte','cookie'].includes(p.id),price:p.price}]));
+      this.strategy='hybrid'; this.serial=0; this.supplierStats={};
+      this.tutorial={active:true,inspected:false,missing:false,compared:[],ordered:false,shelved:false,finished:false};
+      this.notes=[]; this.reactions=[]; this.introSeen=false; this.sound=true; this.lastExplanation='';
+      // The previous manager's spoiled goods are already included in the inherited debt.
+      for(const [name,qty] of [['Whole Milk',3],['Oat Milk',2],['Croissant',3],['Cookie',2]])
+        this.lots[name].push({id:++this.serial,qty,cost:0,quality:.8,received:-100,expires:0,frozen:false,written:true,inherited:true});
+      this.addLot('Original Blend',4,.55,1200); this.addLot('Vanilla',3,.22,1000); this.addLot('Napkin',4,.04,2400);
+      this.openingValue=this.inventoryValue(); this.beginDay();
     }
-    begin() {
-      this.elapsed = 0; this.nextArrival = 38 + this.random()*20; this.orders = []; this.ended = false; this.running = false;
-      this.eventSeen = false; this.pendingEvent = null; this.trend = this.daypart === 1 ? 'cold' : 'normal';
-      this.metrics = {arrived:0,served:0,lost:0,revenue:0,cogs:0,waste:0,wasteUnits:0,fees:0,purchases:0,wait:0,supplyWait:0,satisfaction:0,lostSales:0,demand:{},stockouts:0,cleared:0};
-      this.notice(['Jules: “The fridge failed. Save our café before the school fundraiser!”','Jules: “Word is spreading. Watch what people actually order.”','Jules: “Last push! Protect profit without overbuying.”'][this.daypart]);
-      this.sample();
+    random() {
+      // Saving the generator state prevents reloads from rerolling supplier outcomes.
+      this.seed=(Math.imul(this.seed,1664525)+1013904223)>>>0; return this.seed/4294967296;
     }
-    get label() { return ['Rescue morning','The fundraiser','The comeback'][this.daypart]; }
-    get balance() { return -this.debt + this.reports.filter(report => report.daypart !== this.daypart).reduce((sum,report) => sum + report.profit,0) + this.metrics.revenue - this.metrics.cogs - this.metrics.waste - this.metrics.fees; }
-    stock(name) { return (this.lots[name]||[]).filter(lot => lot.expires>this.clock&&!lot.frozen).reduce((sum,lot) => sum+lot.qty,0); }
-    spoiled(name) { return (this.lots[name]||[]).filter(lot => lot.expires<=this.clock).reduce((sum,lot) => sum+lot.qty,0); }
-    frozen(name) { return (this.lots[name]||[]).filter(lot => lot.expires>this.clock&&lot.frozen).reduce((sum,lot) => sum+lot.qty,0); }
-    occupied(name) { return (this.lots[name]||[]).reduce((sum,lot) => sum+lot.qty,0); }
-    add(name,qty,cost,life,frozen=false) { if(qty>0)this.lots[name].push({qty,cost,expires:this.clock+life,frozen,accounted:false}); }
-    notice(text) { this.messages.unshift(text); this.messages=this.messages.slice(0,6); }
-    earn(key,title) { if(this.quests[key])return;this.quests[key]=true;this.xp+=25;this.badges.push(title);this.notice(`★ +25 IE XP · ${title}`); }
-    markExpired() { for(const item of items)for(const lot of this.lots[item.name])if(lot.expires<=this.clock&&!lot.accounted){lot.accounted=true;this.metrics.waste+=lot.qty*lot.cost;this.metrics.wasteUnits+=lot.qty;this.totalWaste+=lot.qty;this.notice(`${item.name} expired. Clear the shelf, then try a smaller order.`);} }
-    discard(name) {
-      this.markExpired(); const qty=this.spoiled(name); if(!qty)return 0;
-      this.lots[name]=this.lots[name].filter(lot=>lot.expires>this.clock);this.metrics.cleared+=qty;
-      if(!items.some(item=>this.spoiled(item.name)>0))this.earn('cleanup','Quality control: café cleared');
-      return qty;
+    pick(list) { return list[Math.floor(this.random()*list.length)]; }
+    get info() { return DAYS[this.day-1]; }
+    get spendable() { return Math.max(0,this.cash+this.creditLimit); }
+    get profit() { return this.metrics.revenue-this.metrics.cogs-this.metrics.waste-this.metrics.operating; }
+    get balance() { return this.cash+this.inventoryValue(); }
+    get satisfaction() { return this.metrics.served?Math.round(this.metrics.satisfactionTotal/this.metrics.served):this.reputation; }
+    get visualLevel() { return this.reputation>=70&&this.balance>-150?3:this.reputation>=45?2:this.tutorial.shelved?1:0; }
+    get health() {
+      const names=this.activeIngredients(),ready=names.length?names.filter(n=>this.stock(n)>0&&!this.spoiled(n)).length/names.length:0;
+      return Math.round(ready*75+(this.expiredCount()?0:25));
     }
-    clearExpired() { let qty=0;items.forEach(item=>qty+=this.discard(item.name));return qty; }
-    open() { if(this.ended)return 'This chapter is complete.';if(items.some(item=>this.spoiled(item.name)))return 'Clear the expired stock before reopening.';if(!this.starterUsed)return 'Order the reopening kit before reopening.';this.running=true;return null; }
-    // Observations only: no future customer schedule, recipes, or exact arrival counts.
-    rate(name) { const previous=this.reports.at(-1);return previous?((this.metrics.demand[name]||0)+(previous.demand[name]||0)/300*30)/(Math.max(30,this.elapsed)+30):(this.metrics.demand[name]||0)/Math.max(30,this.elapsed); }
-    forecast() { return Object.fromEntries(items.map(item=>[item.name,Math.ceil(this.rate(item.name)*60)])); }
-    suggested(name) { const incoming=this.deliveries.filter(delivery=>!delivery.received).reduce((sum,delivery)=>sum+(delivery.cart[name]||0),0);return Math.max(0,Math.ceil(this.rate(name)*(product(name).lead+30))+2-this.stock(name)-incoming); }
-    pick(list) { return list[Math.min(list.length-1,Math.floor(this.random()*list.length))]; }
-    recipe() {
-      const expanded=this.daypart>0;
-      return {coffee:this.trend==='cold'&&this.random()<.65?'Cold Brew':expanded?this.pick(groups.coffee):'Original Blend',milk:this.random()<(this.trend==='oat'?.7:.45)?'Oat Milk':this.pick(['Whole Milk','Almond']),syrup:this.pick(expanded?groups.syrup:['Vanilla','Caramel']),topping:expanded?this.pick(groups.topping):'Whipped Cream',bakery:this.random()<(this.trend==='bakery'?.8:.5)?(expanded?this.pick(groups.bakery):(this.featuredBakery||'Cookie')):null};
+    say(text) { this.notes.unshift(text); this.notes=this.notes.slice(0,5); }
+    earn(key,title,points=25) {
+      if(this.rewards[key]) return false;
+      this.rewards[key]=true; this.badges.push(title); this.xp+=points; return true;
     }
-    needed(recipe) { return ['Cup','Lid','Napkin',...(recipe.coffee==='Cold Brew'?['Straw']:[]),recipe.coffee,recipe.milk,recipe.syrup,recipe.topping,...(recipe.bakery?[recipe.bakery,'Bakery Bag',...(recipe.bakery==='Breakfast Sandwich'?['Utensil']:[])]:[])]; }
-    missing(order) { return this.needed(order.recipe).filter(name=>this.stock(name)<1); }
+    beginDay() {
+      this.phase='planning'; this.running=false; this.elapsed=0; this.pendingEvent=null; this.eventSeen=false;
+      this.briefed=false; this.orders=[]; this.helper=false; this.discount=false; this.promotion=null;
+      this.ovenBroken=false; this.slowOven=false; this.safetyAlert=false; this.metrics=newMetrics();
+      this.openingCash=this.cash; this.dayOpeningValue=this.inventoryValue();
+      this.nextArrival=12+this.random()*8; this.nextSample=0; this.strategyChosen=this.day!==4;
+      this.reviewSeen=false; this.quizAnswered=false;
+      if(this.day===3) this.menu.oat.enabled=true;
+      this.say(this.info.text);
+    }
+    /* Inventory: fresh, quarantined and frozen lots are separate. */
+    stock(name,frozen=false) { return sum((this.lots[name]||[]).filter(l=>l.expires>this.clock&&l.frozen===frozen).map(l=>l.qty)); }
+    frozen(name) { return this.stock(name,true); }
+    spoiled(name) { return sum((this.lots[name]||[]).filter(l=>l.expires<=this.clock).map(l=>l.qty)); }
+    expiredCount() { return sum(ITEMS.map(i=>this.spoiled(i.name))); }
+    occupied(name) { return sum((this.lots[name]||[]).map(l=>l.qty))+sum(this.batches.filter(b=>b.name===name).map(b=>b.qty)); }
+    capacity(name) { return Math.floor(BY_NAME[name].cap*(this.upgrades.includes('storage')?1.5:1)); }
+    incoming(name) { return sum(this.deliveries.filter(d=>!d.shelved).flatMap(d=>d.lines.filter(l=>l.name===name).map(l=>l.qty))); }
+    inventoryValue() {
+      return sum(Object.values(this.lots).flat().filter(l=>!l.written).map(l=>l.qty*l.cost))
+        +sum(this.deliveries.filter(d=>!d.shelved).flatMap(d=>d.lines.filter(l=>!l.written).map(l=>l.qty*l.cost)))
+        +sum(this.batches.map(b=>b.cost));
+    }
+    addLot(name,qty,cost,life,frozen=false,quality=.94,expires=null,received=null) {
+      if(!BY_NAME[name]||!Number.isInteger(qty)||qty<=0||!Number.isFinite(cost)||cost<0||!Number.isFinite(life)||life<0) return;
+      this.lots[name].push({id:++this.serial,qty,cost,quality,received:received??this.clock,expires:expires??this.clock+life,frozen,written:false});
+    }
+    markExpired() {
+      const lots=[...Object.entries(this.lots).flatMap(([name,list])=>list.map(l=>({name,lot:l}))),
+        ...this.deliveries.filter(d=>d.arrived&&!d.shelved).flatMap(d=>d.lines.map(l=>({name:l.name,lot:l})))];
+      for(const {name,lot} of lots) if(lot.expires<=this.clock&&!lot.written) {
+        lot.written=true; const cost=lot.qty*lot.cost; this.metrics.waste+=cost; this.metrics.wasteUnits+=lot.qty;
+        this.metrics.wasteByItem[name]=(this.metrics.wasteByItem[name]||0)+cost; this.safetyAlert=true;
+        this.say(`${name} expired and was quarantined. Clear it; try a smaller order next time.`);
+      }
+    }
+    discard(name,lotId=null) {
+      if(!BY_NAME[name]||['complete','review'].includes(this.phase)) return 0;
+      this.markExpired();
+      const removed=this.lots[name].filter(l=>lotId===null?l.expires<=this.clock:l.id===lotId);
+      for(const l of removed) if(!l.written) {
+        this.metrics.waste+=l.qty*l.cost; this.metrics.wasteUnits+=l.qty;
+        this.metrics.wasteByItem[name]=(this.metrics.wasteByItem[name]||0)+l.qty*l.cost;
+      }
+      const ids=new Set(removed.map(l=>l.id)); this.lots[name]=this.lots[name].filter(l=>!ids.has(l.id));
+      const count=sum(removed.map(l=>l.qty)); this.metrics.cleared+=count;
+      if(count&&!this.expiredCount()) { this.safetyAlert=false; this.earn('cleanup','Fresh start'); this.say('Safe shelves! Expired food is never served.'); }
+      return count;
+    }
     consume(name,qty=1,frozen=false) {
-      let cost=0,left=qty;
-      for(const lot of this.lots[name].filter(lot=>lot.expires>this.clock&&!!lot.frozen===frozen).sort((a,b)=>a.expires-b.expires)){const take=Math.min(left,lot.qty);lot.qty-=take;left-=take;cost+=take*lot.cost;if(!left)break;}
-      this.lots[name]=this.lots[name].filter(lot=>lot.qty>0);return cost;
+      if(!Number.isInteger(qty)||qty<=0||this.stock(name,frozen)<qty) return null;
+      let left=qty,cost=0,quality=0;
+      // Delivery organization sets shelf order. Expired stock is always excluded.
+      for(const l of this.lots[name].filter(l=>l.expires>this.clock&&l.frozen===frozen)) {
+        const take=Math.min(left,l.qty); l.qty-=take; left-=take; cost+=take*l.cost; quality+=take*l.quality;
+        if(!left) break;
+      }
+      this.lots[name]=this.lots[name].filter(l=>l.qty>0); return {cost,quality:quality/qty};
     }
-    offer(name,pack='fresh') {
-      const item=product(name),fast=this.upgrade==='delivery'?8:0;
-      if(!item||!['fresh','value','frozen'].includes(pack)||(pack==='frozen'&&item.group!=='bakery')||(pack==='value'&&item.group==='supplies'))return null;
-      return {unit:item.cost*(pack==='value'?.6:pack==='frozen'?.65:1),lead:Math.max(8,item.lead+(pack==='value'?15:0)-fast),life:pack==='value'?75:pack==='frozen'?800:item.life*(this.upgrade==='fridge'&&item.group!=='supplies'?1.4:1),frozen:pack==='frozen'};
+    rotate(name) {
+      if(!BY_NAME[name]) return;
+      this.lots[name].sort((a,b)=>(a.received??0)-(b.received??0)||a.id-b.id); this.earn('fifo','First in, first out');
+      this.lastExplanation='Older stock is now at the front. FIFO helps you sell it before it expires.';
     }
-    quote(cart,supplier,pack='fresh') { return Object.entries(cart).reduce((sum,[name,qty])=>sum+(this.offer(name,pack)?.unit||0)*qty,.25); }
-    purchase(cart,supplier,pack='fresh') {
-      if(this.ended)return 'This chapter is finished.';
-      const entries=Object.entries(cart);if(entries.length!==1)return 'Choose one product at a time.';
-      const [name,qty]=entries[0],item=product(name),offer=this.offer(name,pack);
-      if(!item||!offer||!Number.isInteger(qty)||qty<1)return 'Choose a valid product and whole quantity.';
-      if(supplier!==item.company)return 'Use this product’s assigned company.';
-      const incoming=this.deliveries.filter(delivery=>!delivery.received).reduce((sum,delivery)=>sum+(delivery.cart[name]||0),0);
-      if(this.occupied(name)+incoming+qty>item.cap)return 'Shelf full. Clear expired stock or order less.';
-      if(this.elapsed+offer.lead>=300)return 'This order would arrive after closing.';
-      const cost=this.quote(cart,supplier,pack);if(cost>this.cash)return 'Not enough working cash. Try a smaller order.';
-      this.cash-=cost;this.metrics.purchases+=cost;this.metrics.fees+=.25;
-      this.deliveries.push({id:++this.deliveryCount,cart:{...cart},supplier,cost,eta:this.clock+offer.lead,lead:offer.lead,offer,received:false});
-      if(this.daypart===0&&item.group==='bakery'&&!this.featuredBakery)this.featuredBakery=name;
-      if(pack==='value')this.earn('supplychoice','Engineering economics: tested a tradeoff');
-      this.notice(`${item.company}: ${qty} ${name} on the way.`);return null;
+    /* Suppliers: quote first, then sample delivery risk once at checkout. */
+    supplier(id) { return SUPPLIERS.find(s=>s.id===id&&s.unlock<=this.day); }
+    offer(name,supplierId='quick',qty=1,frozen=false,express=false) {
+      const item=BY_NAME[name], supplier=this.supplier(supplierId);
+      if(!item||!supplier||!Number.isInteger(qty)||qty<1||qty>200||(frozen&&item.group!=='bakery')) return null;
+      const bulk=qty>=supplier.bulk?supplier.discount:0, sale=this.discount&&supplierId==='budget'?.1:0;
+      return {
+        unit:item.cost*supplier.multiplier*(frozen?.48:1)*(1-bulk)*(1-sale),
+        lead:Math.max(8,supplier.lead-(express?16:0)-(this.upgrades.includes('ordering')?5:0)),
+        reliability:Math.min(1,supplier.reliability+(this.upgrades.includes('contract')?.1:0)),
+        quality:supplier.quality,life:frozen?1200:item.life*supplier.life*(this.upgrades.includes('fridge')&&['milk','bakery'].includes(item.group)?1.5:1),
+        frozen,bulk
+      };
     }
-    starter() {
-      if(this.starterUsed)return 'Kit already ordered.';
-      if(items.some(item=>this.spoiled(item.name)))return 'Clear expired stock first.';
-      // A bounded core-menu kit prevents 15 repetitive purchases before the first decision.
-      const cart={'Original Blend':12,'Oat Milk':4,'Whole Milk':4,Almond:4,Vanilla:7,Caramel:7,'Whipped Cream':12,Cup:14,Lid:14,Napkin:14,'Bakery Bag':8,Straw:6,Utensil:6};
-      const cost=Object.entries(cart).reduce((sum,[name,qty])=>sum+product(name).cost*qty,1);
-      if(cost>this.cash)return 'Not enough cash for the reopening kit.';
-      if(Object.entries(cart).some(([name,qty])=>this.occupied(name)+this.deliveries.filter(d=>!d.received).reduce((sum,d)=>sum+(d.cart[name]||0),0)+qty>product(name).cap))return 'Make room for the kit before ordering more stock.';
-      this.cash-=cost;this.metrics.purchases+=cost;this.metrics.fees+=1;this.starterUsed=true;
-      this.deliveries.push({id:++this.deliveryCount,cart,supplier:'Campus Supply Co-op',cost,eta:this.clock+15,lead:15,kit:true,received:false});
-      this.earn('kit','Supply chain: reopening kit on the way');return null;
+    quote(cart) {
+      if(!Array.isArray(cart)||!cart.length||cart.length>60) return null;
+      const groups={}; let goods=0;
+      for(const l of cart) {
+        const offer=this.offer(l.name,l.supplier,l.qty,!!l.frozen,!!l.express); if(!offer) return null;
+        goods+=offer.unit*l.qty; groups[`${l.supplier}:${!!l.express}`]={supplier:l.supplier,express:!!l.express};
+      }
+      const shipping=sum(Object.values(groups).map(g=>(g.express?5:1.25)*(this.upgrades.includes('ordering')?.5:1)));
+      return {goods,shipping,total:goods+shipping};
     }
-    receive(id) {
-      const delivery=this.deliveries.find(delivery=>delivery.id===id);
-      if(!delivery||delivery.received||this.clock<delivery.eta)return false;
-      for(const [name,qty]of Object.entries(delivery.cart)){const item=product(name),offer=delivery.offer||{unit:item.cost,life:item.life,frozen:false};this.add(name,qty,offer.unit,offer.life,offer.frozen);}
-      delivery.received=true;this.notice(`Delivery shelved: ${delivery.supplier}.`);return true;
+    placeOrder(cart) {
+      if(!['planning','shift'].includes(this.phase)) return 'Orders open again tomorrow.';
+      const quote=this.quote(cart); if(!quote) return 'Add a valid quantity to your cart.';
+      if(quote.total>this.spendable+1e-8) return 'That exceeds your cash and remaining credit. Reduce the cart.';
+      const quantities={};
+      for(const l of cart) {
+        quantities[l.name]=(quantities[l.name]||0)+l.qty;
+        if(BY_NAME[l.name].group==='bakery'&&((this.strategy==='inhouse'&&!l.frozen)||(this.strategy==='outsource'&&l.frozen)))
+          return 'This pack does not match your bakery strategy. Change strategy in Menu & bakery.';
+      }
+      for(const [name,qty] of Object.entries(quantities))
+        if(this.occupied(name)+this.incoming(name)+qty>this.capacity(name)) return `${name}: not enough shelf space. Order less or clear stock.`;
+      const grouped={};
+      for(const l of cart) (grouped[`${l.supplier}:${!!l.express}`]||=[]).push({...l,offer:this.offer(l.name,l.supplier,l.qty,!!l.frozen,!!l.express)});
+      this.cash-=quote.total; this.metrics.purchases+=quote.goods; this.metrics.operating+=quote.shipping;
+      for(const lines of Object.values(grouped)) {
+        const offer=lines[0].offer, supplier=this.supplier(lines[0].supplier), failed=this.random()>offer.reliability;
+        const delayed=failed&&this.random()<.7, error=failed&&!delayed, lead=offer.lead;
+        this.deliveries.push({
+          id:++this.serial,supplier:supplier.id,name:supplier.name,placed:this.clock,expected:this.clock+lead,
+          eta:this.clock+lead+(delayed?20+Math.floor(this.random()*25):0),reliability:offer.reliability,
+          delayed,error,arrived:false,shelved:false,notified:false,delayNotified:false,
+          lines:lines.map(l=>({name:l.name,qty:l.qty,cost:l.offer.unit,quality:l.offer.quality,life:l.offer.life,frozen:l.offer.frozen,written:false}))
+        });
+      }
+      this.tutorial.ordered=true; this.earn('order','Supply chain started');
+      this.say('Order placed. Credit pays for stock now; sold or wasted stock becomes a product expense.');
+      return null;
+    }
+    processDeliveries() {
+      for(const d of this.deliveries) {
+        if(d.arrived) continue;
+        if(d.delayed&&this.clock>=d.expected&&!d.delayNotified) {
+          d.delayNotified=true; this.say(`${d.name} is late. Safety stock buys you time while you wait.`);
+        }
+        if(this.clock<d.eta) continue;
+        d.arrived=true; this.metrics.deliveries++; this.metrics.onTime+=!d.delayed?1:0; this.metrics.correct+=!d.error?1:0;
+        const stat=this.supplierStats[d.supplier]||={orders:0,onTime:0,correct:0};
+        stat.orders++; stat.onTime+=!d.delayed?1:0; stat.correct+=!d.error?1:0;
+        if(d.error) {
+          const l=d.lines[0], missing=Math.max(1,Math.floor(l.qty*.25)), refund=missing*l.cost;
+          l.qty-=missing; this.cash+=refund; this.metrics.refunds+=refund; this.metrics.purchases-=refund;
+          d.problem=`${missing} ${l.name} missing; $${refund.toFixed(2)} refunded.`;
+        }
+        d.lines=d.lines.filter(l=>l.qty>0);
+        for(const l of d.lines) l.expires=d.eta+l.life;
+        this.say(`Supplies arrived from ${d.name}! Place older products in front.`);
+      }
+    }
+    shelve(id,fifo=true) {
+      const d=this.deliveries.find(d=>d.id===id); if(!d||!d.arrived||d.shelved) return false;
+      this.markExpired();
+      for(const l of d.lines) {
+        this.lots[l.name].push({id:++this.serial,qty:l.qty,cost:l.cost,quality:l.quality,received:d.eta,expires:l.expires,frozen:l.frozen,written:l.written});
+        this.lots[l.name].sort((a,b)=>(fifo?1:-1)*((a.received??0)-(b.received??0)||a.id-b.id));
+      }
+      d.shelved=true; this.tutorial.shelved=true;
+      if(fifo) { this.earn('fifo','First in, first out'); this.lastExplanation='Older products in front: fewer items expire before you can sell them. That is FIFO.'; }
+      else this.lastExplanation='New stock went in front. Older stock can expire behind it; use Rotate on a shelf to fix this.';
+      return true;
+    }
+    activeIngredients() { return [...new Set(MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled).flatMap(p=>p.recipe))]; }
+    restockPlan(size=8,supplier='quick') {
+      const needs={};
+      for(const p of MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled)) for(const name of p.recipe)
+        needs[name]=(needs[name]||0)+(p.kind==='bakery'?Math.max(3,Math.floor(size*.6)):size);
+      return Object.entries(needs).map(([name,qty])=>{
+        const frozen=BY_NAME[name].group==='bakery'&&this.strategy==='inhouse';
+        const wanted=Math.max(0,qty-this.stock(name)-this.frozen(name)-this.incoming(name));
+        return {name,qty:Math.min(frozen?Math.ceil(wanted/4)*4:wanted,this.capacity(name)-this.occupied(name)-this.incoming(name)),supplier,frozen,express:false};
+      }).filter(l=>l.qty>0);
+    }
+    reorderPlan(supplier='quick') {
+      return this.activeIngredients().map(name=>({name,qty:this.suggested(name),supplier,frozen:BY_NAME[name].group==='bakery'&&this.strategy==='inhouse',express:false})).filter(l=>l.qty>0);
+    }
+    /* Menu, production and finance. Conversion costs stay in inventory until sold. */
+    unitCost(id) {
+      const p=MENU.find(p=>p.id===id); if(!p) return 0;
+      return sum(p.recipe.map(name=>{
+        const lots=this.lots[name].filter(l=>!l.written&&!l.frozen);
+        return lots.length?sum(lots.map(l=>l.qty*l.cost))/sum(lots.map(l=>l.qty)):BY_NAME[name].cost;
+      }));
+    }
+    setPrice(id,value) {
+      const p=MENU.find(p=>p.id===id);
+      if(this.day<5||!p||p.day>this.day||!Number.isFinite(value)||value<p.price*.5||value>p.price*1.8||!['planning','shift'].includes(this.phase)) return false;
+      this.menu[id].price=Math.round(value*4)/4; this.earn('pricing','Price experiment'); return true;
+    }
+    toggleMenu(id) {
+      const p=MENU.find(p=>p.id===id);
+      if(!p||p.day>this.day||!['planning','shift'].includes(this.phase)) return false;
+      if(p.kind==='drink'&&this.menu[id].enabled&&MENU.filter(p=>p.kind==='drink'&&this.menu[p.id].enabled).length<=1) return false;
+      this.menu[id].enabled=!this.menu[id].enabled; return true;
+    }
+    setStrategy(strategy) {
+      if(!['inhouse','outsource','hybrid'].includes(strategy)||!['planning','shift'].includes(this.phase)) return false;
+      this.strategy=strategy; this.strategyChosen=true; this.earn('strategy','Make or buy?'); return true;
     }
     bake(name) {
-      const item=product(name);if(this.ended||!item||item.group!=='bakery')return 'Choose a bakery item.';
-      if(this.oven)return 'One oven, one batch. Wait for this batch to finish.';
-      if(this.frozen(name)<3)return 'Order at least 3 frozen portions first.';
-      if(this.cash<.4)return 'Need $0.40 for oven energy.';
-      const cost=this.consume(name,3,true)+.4;this.cash-=.4;this.metrics.purchases+=.4;
-      this.oven={name,ready:this.clock+25,cost};this.earn('bakery','Process design: microbatch started');return null;
+      if(!['planning','shift'].includes(this.phase)||BY_NAME[name]?.group!=='bakery') return 'Choose a pastry during planning or a shift.';
+      if(this.strategy==='outsource') return 'Switch to in-house or hybrid to use the oven.';
+      if(this.ovenBroken) return 'The oven is unavailable today. Buy ready-made pastries.';
+      if(this.batches.length>=(this.upgrades.includes('oven')?2:1)) return 'All oven racks are busy.';
+      if(this.frozen(name)<CONFIG.bakeBatch) return 'Order and shelve 4 frozen portions first.';
+      const conversion=CONFIG.bakeConversion-(this.upgrades.includes('energy')?.8:0);
+      if(this.spendable<conversion) return 'Not enough available credit for labor and oven energy.';
+      const portion=this.consume(name,CONFIG.bakeBatch,true);
+      this.cash-=conversion; this.metrics.conversion+=conversion;
+      this.batches.push({id:++this.serial,name,qty:CONFIG.bakeBatch,cost:portion.cost+conversion,quality:portion.quality,ready:this.clock+(this.upgrades.includes('oven')?16:CONFIG.bakeSeconds)+(this.slowOven?12:0)});
+      this.earn('bake','Small batch, big idea'); return null;
+    }
+    processBatches() {
+      for(const b of this.batches.filter(b=>b.ready<=this.clock)) {
+        const life=BY_NAME[b.name].life*(this.upgrades.includes('fridge')?1.5:1);
+        this.addLot(b.name,b.qty,b.cost/b.qty,life,false,b.quality,b.ready+life,b.ready);
+        this.say(`Fresh from the oven: ${b.qty} ${b.name}.`);
+      }
+      this.batches=this.batches.filter(b=>b.ready>this.clock);
+    }
+    spendOperating(amount) {
+      if(!Number.isFinite(amount)||amount<0||amount>this.spendable+1e-8) return false;
+      this.cash-=amount; this.metrics.operating+=amount; return true;
+    }
+    hireHelper() {
+      if(this.day<4||this.helper||this.phase!=='planning'||!this.spendOperating(22)) return false;
+      this.helper=true; return true;
+    }
+    buyUpgrade(id) {
+      const u=UPGRADES.find(u=>u.id===id);
+      if(!u||this.upgrades.includes(id)||u.day>this.day||!['planning','review'].includes(this.phase)||(this.day===7&&this.phase==='review')||!this.spendOperating(u.cost)) return false;
+      this.upgrades.push(id); this.earn(`upgrade-${id}`,'Continuous improvement');
+      if(this.phase==='review') this.refreshReport();
+      return true;
+    }
+    /* Demand uses observations and seeded uncertainty, never a future customer list. */
+    rate(name) {
+      const last=this.reports.at(-1), prior=last?(last.demand[name]||0)/CONFIG.shiftSeconds:0;
+      return ((this.metrics.demand[name]||0)+prior*45)/(Math.max(this.elapsed,30)+45);
+    }
+    trend(name) {
+      const last=this.reports.at(-1), before=this.reports.at(-2);
+      const current=this.elapsed>=35?this.rate(name):(last?.demand[name]||0)/CONFIG.shiftSeconds;
+      const baseline=(this.elapsed>=35?last?.demand[name]:before?.demand[name])||0;
+      if((this.day===3||this.day===6)&&['Oat Milk','Cold Brew'].includes(name)) return {label:'Trending up',arrow:'↗',level:'up'};
+      if(current===0) return {label:'Not observed yet',arrow:'·',level:'unknown'};
+      if(current<.012) return {label:'Low demand',arrow:'↘',level:'down'};
+      if(current>baseline/CONFIG.shiftSeconds*1.2) return {label:'Increasing',arrow:'↗',level:'up'};
+      if(current<baseline/CONFIG.shiftSeconds*.8) return {label:'Slowing',arrow:'↘',level:'down'};
+      return {label:'Steady',arrow:'→',level:'steady'};
+    }
+    suggested(name) {
+      const target=Math.ceil(this.rate(name)*65)+(this.day>=6?4:2);
+      return Math.max(0,Math.min(target-this.stock(name)-this.frozen(name)-this.incoming(name),this.capacity(name)-this.occupied(name)-this.incoming(name)));
+    }
+    chooseProduct(kind) {
+      const available=MENU.filter(p=>p.kind===kind&&p.day<=this.day&&this.menu[p.id].enabled);
+      if(!available.length) return null;
+      const weighted=available.map(p=>({p,weight:(p.id==='oat'&&this.day>=3?2.4:1)*(this.promotion===p.id?2:1)}));
+      let roll=this.random()*sum(weighted.map(p=>p.weight));
+      for(const v of weighted) { roll-=v.weight; if(roll<=0) return v.p; }
+      return weighted.at(-1).p;
+    }
+    priceAcceptance(p) { return clamp(1.04-Math.max(0,this.menu[p.id].price/p.price-1)*1.3,.12,.99); }
+    customer() {
+      const drink=this.chooseProduct('drink'); if(!drink) return;
+      const pastry=this.random()<(this.promotion==='cookie'?.75:.52)?this.chooseProduct('bakery'):null, products=[drink,...(pastry?[pastry]:[])];
+      const order={id:++this.serial,name:this.pick(['Maya','Leo','Sam','Noor','Ava','Kai','Jules’ neighbor']),face:this.pick(['👩🏽','🧑🏻','👨🏾','👩🏻‍🦱','🧑🏽‍🦱']),arrival:this.clock,products:products.map(p=>p.id),status:'waiting',price:sum(products.map(p=>this.menu[p.id].price)),warned:false};
+      this.metrics.arrived++;
+      for(const p of products) {
+        this.metrics.requested[p.id]=(this.metrics.requested[p.id]||0)+1;
+        for(const name of p.recipe) this.metrics.demand[name]=(this.metrics.demand[name]||0)+1;
+      }
+      this.orders.push(order);
+      if(products.some(p=>this.random()>this.priceAcceptance(p))) { this.lose(order,'price'); this.react(order,'Too expensive for me today.','😕'); return; }
+      // A very limited menu sacrifices some variety but remains a viable capacity strategy.
+      if(this.day>=4&&MENU.filter(p=>p.kind==='drink'&&this.menu[p.id].enabled).length===1&&this.random()<.1) {
+        this.lose(order,'menu'); this.react(order,'I was hoping for another option.','😐');
+      }
+    }
+    requirements(order) {
+      const result={};
+      for(const id of order.products) for(const name of MENU.find(p=>p.id===id).recipe) result[name]=(result[name]||0)+1;
+      return result;
+    }
+    missing(order) { return Object.entries(this.requirements(order)).filter(([name,qty])=>this.stock(name)<qty).map(([name])=>name); }
+    lose(order,reason='stock') {
+      if(['lost','served'].includes(order.status)) return;
+      order.status='lost'; this.metrics.lost++; this.metrics.lostSales+=order.price;
+      if(reason==='price') this.metrics.priceLost++;
+      else if(reason==='menu') this.metrics.menuLost++;
+      else { const key=this.missing(order)[0]||'Service capacity'; this.metrics.lostByItem[key]=(this.metrics.lostByItem[key]||0)+order.price; }
+    }
+    react(order,text,emotion='😊') {
+      this.reactions.unshift({id:order.id,name:order.name,face:order.face,emotion,text}); this.reactions=this.reactions.slice(0,3);
+    }
+    substituteWaiting(from,to) {
+      for(const order of this.orders.filter(o=>o.status==='waiting'&&o.products.includes(from))) {
+        if(this.random()>.8){this.lose(order,'menu');this.react(order,'I’ll come back for cold brew another day.','😐');continue;}
+        order.products=order.products.map(id=>id===from?to:id);
+        order.price=sum(order.products.map(id=>this.menu[id].price));order.warned=false;
+        this.react(order,'A vanilla latte works for me!','🙂');
+      }
+    }
+    processCustomers() {
+      for(const order of this.orders) {
+        if(['lost','served'].includes(order.status)) continue;
+        const missing=this.missing(order);
+        if(missing.length&&!order.warned) {
+          order.warned=true; this.metrics.stockouts++;
+          for(const name of missing) this.metrics.missing[name]=(this.metrics.missing[name]||0)+1;
+          this.say(`${order.name} is waiting for ${missing[0]}. Restock or promote a stocked alternative.`);
+        }
+        if(this.clock-order.arrival>=CONFIG.patience) { this.lose(order); this.react(order,'Maybe I’ll try again tomorrow.','😔'); continue; }
+        if(order.status==='preparing'&&this.clock>=order.ready) {
+          if(missing.length) { order.status='waiting'; continue; }
+          let cost=0,quality=0,units=0;
+          for(const [name,qty] of Object.entries(this.requirements(order))) {
+            const used=this.consume(name,qty); cost+=used.cost; quality+=used.quality*qty; units+=qty;
+          }
+          order.status='served'; this.metrics.served++; this.cash+=order.price;
+          this.metrics.revenue+=order.price; this.metrics.cogs+=cost;
+          const wait=this.clock-order.arrival,q=quality/units;
+          const priceRatio=sum(order.products.map(id=>this.menu[id].price/MENU.find(p=>p.id===id).price))/order.products.length;
+          const satisfaction=clamp(92-(wait-6)*.65-(1-q)*45-Math.max(0,priceRatio-1)*35,30,100);
+          this.metrics.satisfactionTotal+=satisfaction; this.metrics.qualityTotal+=q; this.metrics.waitTotal+=wait;
+          for(const id of order.products) this.metrics.sold[id]=(this.metrics.sold[id]||0)+1;
+          this.react(order,satisfaction>78?this.pick(['This place is getting better!','I’m telling my friends.','Worth coming back for.']):'Good coffee. The wait could be shorter.',satisfaction>78?'😊':'🙂');
+          if(this.metrics.served>=5) this.earn('first-five','Five reasons to reopen');
+        }
+      }
+      let free=(this.helper?2:1)-this.orders.filter(o=>o.status==='preparing').length;
+      for(const order of this.orders.filter(o=>o.status==='waiting'&&!this.missing(o).length)) {
+        if(free--<=0) break;
+        order.status='preparing'; order.ready=this.clock+CONFIG.serviceSeconds+(this.batches.length&&!this.helper?5:0);
+      }
+    }
+    /* Short consequential story decisions. Rewards and expenses apply only once. */
+    eventData() {
+      const kind=this.info.event;
+      const data={
+        welcome:{title:'Our first regular is back!',text:'Maya wants to bring the robotics club. A cookie special could win them over, if you keep it stocked.',choices:[['promote','Feature cookies','More bakery demand; no fee.'],['steady','Keep a small menu','A calmer start while we learn.']]},
+        discount:{title:'A bargain with a catch',text:'Budget Beans offers 10% off for the rest of today. Their delivery reliability stays the same.',choices:[['deal','Take the discount','Cheaper orders; same risk.'],['steady','Stick to the plan','Protect the supply chain you trust.']]},
+        oat:{title:'Oat Milk Cold Brew is trending!',text:'Requests are climbing. Extra stock could help, but leftovers still expire.',choices:[['emergency','Express oat kit · $14','8 oat milk, 8 cold brew, 8 straws; 8s.'],['alternative','Promote Vanilla Latte','Shift demand to the original menu.'],['hide','Pause the oat special','Fewer choices; preserve other supplies.']]},
+        oven:{title:'The oven is acting up',text:'The thermostat failed between batches. How should we keep the pastry case stocked?',choices:[['repair','Repair it · $12','Keep baking here today.'],['outsource','Use the local bakery','Buy ready-made; no oven work.'],['hybrid','Work around it','Slower batches; mix make and buy.']]},
+        price:{title:'“We’re on a student budget”',text:'Maya suggests a value special. You can test it without permanently changing every price.',choices:[['value','Vanilla Latte: 10% off','Lower margin; better price acceptance.'],['quality','Keep prices; explain quality','Protect margins and watch reactions.']]},
+        rush:{title:'The festival crowd is here!',text:'Keep the system moving. An express buffer costs money; a focused menu reduces complexity.',choices:[['emergency','Express oat kit · $14','8 oat milk, 8 cold brew, 8 straws; 8s.'],['alternative','Promote Vanilla Latte','Use a different set of ingredients.'],['focus','Focus the drink menu','Offer only your best-stocked drink.']]},
+        final:{title:'The neighborhood is watching',text:'The landlord arrives tonight. Invite a few more neighbors, or focus on serving the people already here.',choices:[['invite','Community invite · $10','More traffic for the rest of the shift.'],['steady','Make every order count','Keep the current pace.']]}
+      };
+      return {...data[kind],kind};
     }
     chooseEvent(choice) {
-      if(!this.pendingEvent)return;
-      if(choice==='promote'){this.trend=this.pendingEvent.trend;this.earn('event','Optimization: took a demand risk');this.notice('Jules: “Promotion is up! Watch the trend chart.”');}
-      else{this.notice('Jules: “A steady menu works too. Protect our stock.”');}
-      this.pendingEvent=null;
-    }
-    buyUpgrade(kind) {
-      if(!this.ended)return 'Finish this chapter to unlock an improvement.';
-      if(this.upgrade)return 'You already chose an upgrade.';
-      if(!['fridge','delivery'].includes(kind))return 'Choose an upgrade.';
-      const cost=kind==='fridge'?12:8;if(this.cash<cost)return 'Not enough working cash.';
-      this.cash-=cost;this.metrics.fees+=cost;this.upgrade=kind;
-      if(this.ended){const report=this.reports.at(-1);report.fees+=cost;report.profit-=cost;report.cash=this.cash;report.balance=this.balance;}
-      this.earn('upgrade','Continuous improvement: café upgraded');return null;
-    }
-    sample() { this.history.push({t:this.clock,shift:this.daypart,arrived:this.metrics.arrived,served:this.metrics.served,waste:this.metrics.waste,stock:Object.fromEntries(items.map(item=>[item.name,this.stock(item.name)]))});this.nextSample=this.clock+10; }
-    tick(dt) {
-      if(!this.running||this.ended||this.pendingEvent)return;
-      dt=Math.max(0,Math.min(dt,1));this.clock+=dt;this.elapsed+=dt;this.markExpired();
-      if(this.oven&&this.clock>=this.oven.ready){const batch=this.oven;this.add(batch.name,3,batch.cost/3,170);this.oven=null;this.notice(`🥐 Fresh batch! +3 ${batch.name}.`);}
-      if(!this.eventSeen&&this.elapsed>=110){this.eventSeen=true;this.pendingEvent=this.random()<.5?{title:'The robotics club needs a café!',trend:'bakery',text:'Jules: “They’ll promote our pastries if we say yes. More sales are possible, but bakery demand could jump.”'}:{title:'Oat Milk just went viral',trend:'oat',text:'Jules: “A student posted our oat latte. Put it on special, or keep a quieter menu?”'};return;}
-      if(this.elapsed>=this.nextArrival){
-        const recipe=this.recipe();const order={id:++this.serial,name:this.pick(names),recipe,arrival:this.clock,status:'waiting',supplyWait:0,price:6+(recipe.bakery?3:0),warned:false};
-        this.orders.push(order);this.metrics.arrived++;this.needed(recipe).forEach(name=>this.metrics.demand[name]=(this.metrics.demand[name]||0)+1);
-        // Random interarrival intervals. Future orders and their count do not exist yet.
-        const rush=this.elapsed>100&&this.elapsed<220,boost=this.trend==='normal'?1:.8;
-        this.nextArrival=this.elapsed+(rush?15+this.random()*14:25+this.random()*22)*boost;
+      const event=this.pendingEvent;
+      if(!event||!event.choices.some(c=>c[0]===choice)) return 'Choose one of the available decisions.';
+      this.lastExplanation='';
+      if(choice==='emergency') {
+        const cart=[['Oat Milk',8],['Cold Brew',8],['Straw',8]];
+        if(cart.some(([n,q])=>this.occupied(n)+this.incoming(n)+q>this.capacity(n))) return 'The express kit will not fit. Choose another response.';
+        if(this.spendable<14) return 'You need $14 of cash or credit for this kit.';
+        const goods=sum(cart.map(([n,q])=>BY_NAME[n].cost*q));
+        this.cash-=14; this.metrics.purchases+=goods; this.metrics.operating+=14-goods;
+        this.deliveries.push({id:++this.serial,supplier:'quick',name:'QuickShip emergency',placed:this.clock,expected:this.clock+8,eta:this.clock+8,reliability:1,delayed:false,error:false,arrived:false,shelved:false,notified:false,
+          lines:cart.map(([name,qty])=>({name,qty,cost:BY_NAME[name].cost,quality:.94,life:BY_NAME[name].life,frozen:false,written:false}))});
+        this.lastExplanation='Emergency shipping protects sales, but its fee reduces profit. A safety buffer can cost less.';
       }
-      for(const order of this.orders){if(order.status!=='waiting')continue;if(this.missing(order).length){order.supplyWait+=dt;this.metrics.supplyWait+=dt;if(!order.warned){order.warned=true;this.metrics.stockouts++;this.notice(`Missed ingredient: ${this.missing(order).join(', ')}. Can you restock in time?`);}}if(this.clock-order.arrival>=75){order.status='lost';this.metrics.lost++;this.metrics.lostSales+=order.price;this.notice(`Lost a sale. Use the demand chart to adjust your safety stock.`);}}
-      const active=this.orders.find(order=>order.status==='preparing');
-      if(active&&this.clock>=active.ready){active.status='served';const wait=this.clock-active.arrival;this.cash+=active.price;this.metrics.served++;this.metrics.revenue+=active.price;this.metrics.wait+=wait;if(this.metrics.served>=5)this.earn('service','Inventory control: five customers saved');}
-      if(!this.orders.some(order=>order.status==='preparing')){const order=this.orders.find(order=>order.status==='waiting'&&!this.missing(order).length);if(order){order.status='preparing';order.ready=this.clock+9+(order.recipe.bakery?4:0);this.needed(order.recipe).forEach(name=>this.metrics.cogs+=this.consume(name));}}
-      if(this.clock>=this.nextSample)this.sample();if(this.elapsed>=300)this.finish();
+      if(choice==='repair'&&!this.spendOperating(12)) return 'Not enough available credit for the repair.';
+      if(choice==='invite'&&!this.spendOperating(10)) return 'Not enough available credit for an invitation.';
+      if(choice==='promote') this.promotion='cookie';
+      if(choice==='deal') this.discount=true;
+      if(choice==='alternative') {
+        this.promotion='latte'; this.menu.latte.enabled=true; this.menu.oat.enabled=false;
+        this.substituteWaiting('oat','latte');
+        this.lastExplanation='Waiting cold-brew customers were offered a latte. Some accept; others leave. Substitution protects service but changes what you sell.';
+      }
+      if(choice==='hide') { this.menu.latte.enabled=true; this.menu.oat.enabled=false; }
+      if(choice==='focus') {
+        const best=MENU.filter(p=>p.kind==='drink'&&p.day<=this.day).sort((a,b)=>this.servings(b.id)-this.servings(a.id))[0];
+        for(const p of MENU.filter(p=>p.kind==='drink')) this.menu[p.id].enabled=p.id===best.id;
+        this.lastExplanation='A focused menu needs fewer ingredients. Some customers will miss the variety.';
+      }
+      if(choice==='outsource') { this.strategy='outsource'; this.ovenBroken=true; }
+      if(choice==='hybrid') { this.strategy='hybrid'; this.ovenBroken=false; this.slowOven=true; }
+      if(choice==='repair') { this.ovenBroken=false; this.slowOven=false; }
+      if(choice==='value') this.menu.latte.price=Math.round(MENU[0].price*.9*4)/4;
+      if(choice==='invite') this.promotion='invite';
+      if(!this.lastExplanation) this.lastExplanation='Watch the next sales and waste results. Improving a system means testing a decision, then adjusting.';
+      this.earn(`decision-${this.day}`,'Rescue decision',15); this.pendingEvent=null; return null;
+    }
+    servings(id) { const p=MENU.find(p=>p.id===id); return p?Math.min(...p.recipe.map(n=>this.stock(n))):0; }
+    quiz(answer) {
+      if(this.phase!=='review'||this.quizAnswered) return false;
+      this.quizAnswered=true; const correct=answer==='buffer';
+      if(correct) this.earn(`reflection-${this.day}`,'Engineer’s reflection',10);
+      return correct;
+    }
+    /* Campaign clock: planning advances logistics only; the live shift advances everything. */
+    open() {
+      if(this.phase!=='planning') return 'This day has already started.';
+      if(!this.briefed) return 'Read today’s short briefing first.';
+      if(this.expiredCount()) return 'Clear the expired stock before opening. It is quarantined for safety.';
+      if(!this.strategyChosen) return 'Choose today’s bakery strategy in Menu & bakery.';
+      if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0)) return 'Stock at least one complete drink recipe before opening.';
+      const overhead=CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0);
+      if(!this.spendOperating(overhead)) return `Keep $${overhead} available for today’s rent, power and staff.`;
+      this.phase='shift'; this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
+    }
+    advancePlanning() {
+      if(this.phase!=='planning') return false;
+      const targets=[...this.deliveries.filter(d=>!d.arrived).map(d=>d.eta),...this.batches.map(b=>b.ready)];
+      if(!targets.length) return false;
+      this.clock=Math.max(this.clock,Math.min(...targets));
+      this.processDeliveries(); this.processBatches(); this.markExpired(); return true;
+    }
+    tick(seconds) {
+      if(!this.running||this.phase!=='shift'||this.pendingEvent||!Number.isFinite(seconds)||seconds<=0) return;
+      // Small steps preserve causal ordering at every simulation speed.
+      for(let left=Math.min(seconds,CONFIG.shiftSeconds);left>1e-8;) {
+        const dt=Math.min(left,1,CONFIG.shiftSeconds-this.elapsed); left-=dt;
+        this.clock+=dt; this.elapsed+=dt; this.processDeliveries(); this.processBatches(); this.markExpired();
+        if(this.elapsed>=this.nextArrival&&this.elapsed<CONFIG.shiftSeconds-8) {
+          this.customer();
+          const enabled=MENU.filter(p=>p.kind==='drink'&&this.menu[p.id].enabled);
+          const priceFactor=sum(enabled.map(p=>this.menu[p.id].price/p.price))/Math.max(1,enabled.length);
+          this.nextArrival=this.elapsed+CONFIG.arrivalIntervals[this.day-1]*(.65+this.random()*.7)*(1.2-this.reputation/100*.45)*clamp(priceFactor,.65,1.5)*(this.promotion==='invite'?.8:1);
+        }
+        this.processCustomers();
+        if(this.elapsed>=this.nextSample) {
+          this.history.push({day:this.day,t:this.elapsed,arrived:this.metrics.arrived,served:this.metrics.served});
+          this.metrics.stockSamples++; this.metrics.stockValueSum+=this.inventoryValue(); this.nextSample+=20;
+        }
+        if(!this.eventSeen&&this.elapsed>=100) { this.eventSeen=true; this.pendingEvent=this.eventData(); break; }
+        if(this.elapsed>=CONFIG.shiftSeconds) { this.finish(); break; }
+      }
+    }
+    biggestProblem() {
+      const lost=Object.entries(this.metrics.lostByItem).sort((a,b)=>b[1]-a[1])[0];
+      const waste=Object.entries(this.metrics.wasteByItem).sort((a,b)=>b[1]-a[1])[0];
+      if(this.metrics.priceLost>=3) return `${this.metrics.priceLost} customers left because of prices. Try a smaller margin on one popular drink.`;
+      if(this.metrics.menuLost>=2&&!lost) return `${this.metrics.menuLost} customers wanted more variety. Try adding one well-stocked drink while protecting service speed.`;
+      if(lost&&(!waste||lost[1]>waste[1])) return `$${lost[1].toFixed(2)} in missed sales: ${lost[0]}. A small safety buffer or more capacity could help.`;
+      if(waste&&waste[1]>2) return `$${waste[1].toFixed(2)} of ${waste[0]} was wasted. Buy smaller batches and move older stock forward.`;
+      return 'A stable shift. Keep watching actual demand before expanding the menu.';
     }
     finish() {
-      if(this.ended)return;this.orders.filter(order=>['waiting','preparing'].includes(order.status)).forEach(order=>{order.status='lost';this.metrics.lost++;this.metrics.lostSales+=order.price;});
-      this.running=false;this.ended=true;this.elapsed=300;const metrics=this.metrics;
-      this.reports.push({...metrics,daypart:this.daypart,label:this.label,profit:metrics.revenue-metrics.cogs-metrics.waste-metrics.fees,cash:this.cash,balance:this.balance});this.sample();
+      if(this.phase!=='shift') return false;
+      for(const o of this.orders) if(!['served','lost'].includes(o.status)) this.lose(o);
+      this.running=false; this.phase='review'; this.elapsed=CONFIG.shiftSeconds;
+      const service=this.metrics.served/Math.max(1,this.metrics.arrived);
+      this.reputation=clamp(Math.round(this.reputation*.72+this.satisfaction*service*.28),0,100);
+      if(service>=.85) this.earn(`service-${this.day}`,'Customers come back',20);
+      if(this.metrics.waste<2&&this.metrics.served>5) this.earn(`waste-${this.day}`,'Waste watcher',20);
+      this.reports.push({day:this.day}); this.refreshReport(); return true;
     }
-    next() { if(!this.ended||this.daypart===2)return;this.daypart++;this.begin(); }
+    refreshReport() {
+      const report=this.reports.find(r=>r.day===this.day); if(!report) return;
+      Object.assign(report,clone(this.metrics),{
+        day:this.day,title:this.info.title,profit:this.profit,cash:this.cash,balance:this.balance,
+        inventoryValue:this.inventoryValue(),remaining:sum(ITEMS.map(i=>this.stock(i.name))),
+        reputation:this.reputation,satisfaction:this.satisfaction,problem:this.biggestProblem(),
+        openingCash:this.openingCash,openingValue:this.dayOpeningValue,
+        averageInventory:this.metrics.stockSamples?this.metrics.stockValueSum/this.metrics.stockSamples:0,
+        // Faults are mutually exclusive: on-time + correct - total = fault-free orders.
+        supplierPerformance:this.metrics.deliveries?100*(this.metrics.onTime+this.metrics.correct-this.metrics.deliveries)/this.metrics.deliveries:null
+      });
+    }
+    nextDay() {
+      if(this.phase!=='review'||this.day>=CONFIG.days) return false;
+      this.day++; this.beginDay(); this.clock+=CONFIG.overnightSeconds;
+      this.processDeliveries(); this.processBatches(); this.markExpired(); return true;
+    }
+    ending() {
+      if(this.day!==7||!['review','complete'].includes(this.phase)) return null;
+      const served=sum(this.reports.map(r=>r.served)),arrived=sum(this.reports.map(r=>r.arrived)),service=served/Math.max(1,arrived);
+      const waste=sum(this.reports.map(r=>r.waste)),revenue=sum(this.reports.map(r=>r.revenue)),profit=sum(this.reports.map(r=>r.profit));
+      const score=Math.round(clamp(service*35+this.reputation*.35+clamp((this.balance+500)/700,0,1)*20+Math.max(0,10-waste/12),0,100));
+      // Solvency and real service matter. XP alone cannot save the café.
+      const tier=this.cash>=0&&this.balance>=75&&this.reputation>=70&&service>=.85?'gold':
+        this.balance>=0&&this.reputation>=50&&service>=.7?'silver':
+        this.balance>=-200&&this.reputation>=35&&this.reports.at(-1).profit>0&&service>=.5?'bronze':'failure';
+      return {tier,title:{gold:'Café Turnaround Champion',silver:'Café Saved',bronze:'Barely Survived',failure:'Café Closed — Try Again'}[tier],
+        score,service,served,arrived,waste,revenue,profit,balance:this.balance,reputation:this.reputation,
+        lostSales:sum(this.reports.map(r=>r.lostSales)),efficiency:Math.round(service*100),
+        turnover:sum(this.reports.map(r=>r.cogs))/Math.max(1,sum(this.reports.map(r=>r.averageInventory))/7)};
+    }
+    /* Versioned, mode-specific saves. Resume always pauses to orient the player. */
+    save() {
+      const data=clone(this); data.running=false; return JSON.stringify({version:CONFIG.version,state:data});
+    }
+    static restore(serialized) {
+      try {
+        if(typeof serialized!=='string'||serialized.length>1500000) return null;
+        const envelope=JSON.parse(serialized),s=envelope.state;
+        if(envelope.version!==CONFIG.version||!s||!Number.isInteger(s.day)||s.day<1||s.day>7) return null;
+        const safe=value=>{
+          if(typeof value==='number') return Number.isFinite(value)&&Math.abs(value)<1e12;
+          if(Array.isArray(value)) return value.length<20000&&value.every(safe);
+          if(value&&typeof value==='object') return Object.keys(value).every(k=>!['__proto__','constructor','prototype'].includes(k))&&Object.values(value).every(safe);
+          return true;
+        };
+        if(!safe(s)||!Number.isInteger(s.seed)||s.seed<0||s.seed>4294967295||
+          !Number.isFinite(s.cash)||!Number.isFinite(s.clock)||!Number.isFinite(s.elapsed)||
+          s.cash < -s.creditLimit-1e-6||s.creditLimit!==CONFIG.creditLimit||
+          !['planning','shift','review','complete'].includes(s.phase)||s.clock<0||s.elapsed<0||s.elapsed>CONFIG.shiftSeconds||
+          !s.lots||!s.menu||!s.metrics||!Array.isArray(s.reports)||!Array.isArray(s.deliveries)||!Array.isArray(s.batches)||
+          !Array.isArray(s.upgrades)||!s.tutorial||!Array.isArray(s.tutorial.compared)||!Array.isArray(s.history)||!Array.isArray(s.reactions)||
+          !Array.isArray(s.orders)||!Array.isArray(s.badges)||!s.rewards||!s.supplierStats||!Array.isArray(s.notes)||
+          !['inhouse','outsource','hybrid'].includes(s.strategy)||!Number.isFinite(s.reputation)||s.reputation<0||s.reputation>100) return null;
+        if(Object.entries(newMetrics()).some(([k,v])=>typeof v==='number'?typeof s.metrics[k]!=='number'||(k!=='purchases'&&s.metrics[k]<0):!s.metrics[k]||typeof s.metrics[k]!=='object')) return null;
+        if(s.orders.some(o=>!Array.isArray(o.products)||o.products.some(id=>!MENU.some(p=>p.id===id)))) return null;
+        if(s.pendingEvent&&(!Array.isArray(s.pendingEvent.choices)||!DAYS.some(d=>d.event===s.pendingEvent.kind))) return null;
+        if(ITEMS.some(i=>!Array.isArray(s.lots[i.name])||s.lots[i.name].some(l=>!Number.isInteger(l.qty)||l.qty<0||l.cost<0||typeof l.expires!=='number'))) return null;
+        if(MENU.some(p=>!s.menu[p.id]||typeof s.menu[p.id].enabled!=='boolean'||!Number.isFinite(s.menu[p.id].price)||s.menu[p.id].price<p.price*.5||s.menu[p.id].price>p.price*1.8)) return null;
+        if(s.deliveries.some(d=>!Array.isArray(d.lines)||d.lines.some(l=>!BY_NAME[l.name]||!Number.isInteger(l.qty)||l.qty<0))) return null;
+        const game=new InventorySim(s.seed);
+        if(Object.keys(game).some(key=>!Object.hasOwn(s,key))) return null;
+        for(const key of Object.keys(game)) if(Object.hasOwn(s,key)) game[key]=s[key];
+        game.running=false; return game;
+      } catch { return null; }
+    }
   }
-  window.InventorySim=InventorySim;window.INVENTORY_ITEMS=items;window.INVENTORY_GROUPS=groups;
+  window.InventorySim=InventorySim; window.INVENTORY_ITEMS=ITEMS; window.INVENTORY_GROUPS=GROUPS;
+  window.RESCUE={CONFIG,SUPPLIERS,MENU,DAYS,UPGRADES};
 })();
