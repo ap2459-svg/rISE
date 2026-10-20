@@ -44,8 +44,8 @@
 .cr-nav>button[aria-current=page]{background:#fff3d9;color:#493723;box-shadow:0 4px 0 #34241544}
 .cr-nav-bottom{margin-top:auto;display:flex;flex-direction:column;gap:8px}
 .cr-nav-bottom button{font-size:11px;padding:8px}
-.cr-jules{display:flex;align-items:center;gap:7px;padding:10px 4px;font-size:27px}
-.cr-jules b{font-size:10px;font-weight:700;color:#f5dec0}
+.cr-team{display:flex;align-items:center;gap:7px;padding:10px 4px;font-size:27px}
+.cr-team b{font-size:10px;font-weight:700;color:#f5dec0}
 #cr-xp{text-align:center;font-size:10px;color:#efd8a9}
 .cr-workspace{min-width:0;min-height:0;border:1px solid #d1b892;background:#fff9ed;border-radius:19px;padding:19px;display:flex;flex-direction:column;gap:12px;box-shadow:0 5px #7d613312;overflow:auto}
 .cr-work-title{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0}
@@ -225,7 +225,7 @@
 @media(max-height:780px) and (min-width:801px){
   .cr-game{padding:9px;gap:7px}.cr-header{gap:12px}.cr-brand{font-size:24px;padding:8px 15px}.cr-brand small{font-size:8px;margin-top:3px}
   .cr-guide{padding:7px 12px;gap:9px}.cr-guide-face{font-size:24px}.cr-guide b{font-size:11px}.cr-guide button{font-size:11px;padding:8px 10px}
-  .cr-workspace{padding:12px;gap:8px}.cr-work-title h1{font-size:24px}.cr-kicker{font-size:8px}.cr-nav>button{padding:11px 8px}.cr-nav-bottom{gap:6px}.cr-jules{padding:4px;font-size:23px}
+  .cr-workspace{padding:12px;gap:8px}.cr-work-title h1{font-size:24px}.cr-kicker{font-size:8px}.cr-nav>button{padding:11px 8px}.cr-nav-bottom{gap:6px}.cr-team{padding:4px;font-size:23px}
   .cr-category-tabs button{font-size:10px;padding:6px 4px}.cr-shelves{gap:9px 17px;margin:10px 25px 0}.cr-stock-sign{font-size:11px;margin-top:8px}.cr-product-art{font-size:32px}.cr-stock-item>b{font-size:11px}.cr-stock-tag{font-size:9px}
   .cr-stock-floor{padding:6px 13px;min-height:42px}.cr-stock-floor>span{font-size:23px}.cr-stock-floor small{font-size:8px}
   .cr-live{padding:6px 11px}.cr-controls{gap:11px}.cr-controls button{padding:8px 11px}.cr-work-note{font-size:9px}
@@ -298,3 +298,61 @@
   .cr-cart-total{grid-column:2;grid-row:2;border:0;padding:0}.cr-cart-total>span{font-size:9px}.cr-cart-total>strong{font-size:14px}.cr-cart-total button{font-size:9px;padding:8px 5px}
 }
 @media(prefers-reduced-motion:reduce){.cr-game *,.cr-overlay *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Day-one refinement: shared Barista fonts, ingredient artwork and tactile controls. */
+.cr-game{background:linear-gradient(#c5c4c6,#aaa9af);color:#341c14}
+.cr-game h1,.cr-game h2,.cr-overlay h2,.cr-brand,.cr-stock-sign,.cr-transformation b{font-family:'Patrick Hand',sans-serif}
+.cr-game button,.cr-overlay button{border:2px solid #897264;background:linear-gradient(#fffaf3,#f2dfcd);box-shadow:0 3px #776252;color:#40271b}
+.cr-game button.cr-primary,.cr-overlay button.cr-primary{background:linear-gradient(#56e66d,#20b940);border-color:#18412b;color:#123a21;box-shadow:inset 0 2px #a3ffa5,0 3px #244431;text-shadow:0 1px #ffffff66}
+.cr-game button.cr-primary:hover,.cr-overlay button.cr-primary:hover{background:linear-gradient(#7cf08d,#32cf54)}
+.cr-game button[aria-pressed=true],.cr-overlay button[aria-pressed=true]{background:linear-gradient(#ffef83,#ffd239);border-color:#976211;color:#40271b;box-shadow:0 3px #81531b}
+.cr-brand{background:repeating-linear-gradient(3deg,#b75d2c 0 9px,#bc6530 11px 18px,#b56232 25px 28px);border:3px solid #4c2519;color:#fff5df;text-shadow:1px 2px #45231c;box-shadow:inset 0 3px #ffd09a,0 3px #5b321f}
+.cr-workspace,.cr-dialog{border:3px solid #6d5041;background:linear-gradient(#fff9ee,#ffeed8);box-shadow:0 4px #4c465244}
+.cr-nav{background:#70513f;border:2px solid #4c2519}.cr-nav>button{background:transparent;border:0;box-shadow:none;color:#fff5e3}
+.cr-nav>button[aria-current=page]{background:linear-gradient(#ffec72,#ffc128);border:2px solid #976211;color:#40271b}
+.cr-stock-scene{border-color:#897264;background:repeating-linear-gradient(0deg,#e8dfd6 0 40px,#d5c9bf 40px 42px)}
+.cr-stock-scene .cr-stock-item{border-width:2px}.cr-stock-sign{font-size:16px}
+.cr-game[data-level="0"] .cr-stock-scene{background:repeating-linear-gradient(-5deg,#bdb5aa 0 40px,#b3aaa0 40px 42px)}
+.cr-game[data-level="1"] .cr-stock-scene{background:#e8dfd6}
+.cr-ui-icon{width:1.7em;height:1.7em;display:inline-block;vertical-align:middle;flex-shrink:0}
+.cr-product-art svg{height:52px;width:66px;display:block}.cr-product-art{height:54px;display:flex;justify-content:center;align-items:center}
+.cr-stock-item>b{min-height:15px}.cr-stock-item small{line-height:1.2}
+.cr-nav>button span{display:inline-flex;align-items:center;justify-content:center}.cr-nav .cr-ui-icon{width:26px;height:26px}
+.cr-company-icon{background:#fff5e3}.cr-company-icon svg{width:37px;height:37px}
+.cr-stock-floor>span{display:flex;align-items:center;gap:8px}.cr-stock-floor .cr-ui-icon{width:32px;height:32px}
+.cr-bin svg{width:27px;height:29px}.cr-window>svg{width:38px;height:38px;margin:8px}
+.cr-shopping-meta svg{width:26px;height:26px}.cr-cart-lines svg{width:25px;height:28px}.cr-cart-lines small svg{width:14px;height:14px}
+.cr-review-cart>span{align-items:center;justify-content:flex-start}.cr-review-cart>span>b{margin-left:auto}.cr-review-cart svg,.cr-line-art svg{width:30px;height:35px}
+.cr-lots>div>span>svg{width:38px;height:43px}.cr-lots button svg{width:19px;height:21px}
+.cr-recipe svg{width:31px;height:35px}.cr-trend-list svg{width:25px;height:29px}
+.cr-team{display:flex;gap:8px;align-items:center;padding:8px}.cr-team>b{font-size:10px}.cr-team svg{width:32px;height:32px}
+.cr-rating{display:inline-flex!important;align-items:center;gap:7px;vertical-align:middle;white-space:nowrap}
+.cr-stars{display:flex!important;align-items:center;gap:2px}.cr-stars svg{width:17px;height:17px;display:block}.cr-rating>b{font:800 13px 'Nunito',sans-serif!important;color:#573421}
+.cr-reputation{min-width:145px}.cr-reputation .cr-rating{gap:6px}.cr-reputation small{margin-bottom:3px}
+.cr-stat-row .cr-rating{flex-direction:column;gap:5px;margin-top:6px}.cr-stat-row .cr-rating>b{font-size:17px!important}
+.cr-guide{background:#fff1bd;border:2px solid #be8f25}.cr-guide-face svg{width:30px;height:35px}.cr-guide small{color:#6d501c}.cr-guide>div:nth-child(2){flex:1}
+.cr-tour-target{outline:3px solid #2583c3!important;outline-offset:3px;animation:cr-tour-pulse 1.4s ease-in-out infinite!important;position:relative;z-index:2}
+.cr-tour-target:after{content:'Click here';position:absolute;right:3px;top:-11px;padding:2px 6px;background:#17679c;color:white;border-radius:5px;font:800 9px 'Nunito',sans-serif;pointer-events:none}
+.cr-tour-summary{display:flex;align-items:center;gap:16px;background:#f5e5ce;padding:18px;border-radius:14px}.cr-tour-summary svg{width:70px;height:70px}.cr-tour-summary p{font-size:17px}
+.cr-guide .cr-text{white-space:nowrap;display:block}
+.cr-story-art{background:linear-gradient(#3c302b88,#3c302b88),url('assets/cafe.png') center 48%/cover}.cr-shop{background:#f4dfb9e8;border:3px solid #573421}.cr-story-face{display:none}
+.cr-customer-art{display:inline-block!important;width:54px;height:62px;flex-shrink:0;background:url('assets/customers.png') no-repeat;background-size:300% auto;background-position:calc(var(--person)*50%) 0}
+.cr-character .cr-customer-art{width:75px;height:87px}.cr-character>span:has(>.cr-ui-icon){font-size:30px}
+.cr-coffee-image{width:80px;height:94px;object-fit:contain}.cr-drink-art{display:flex;align-items:center;justify-content:center;height:94px}.cr-drink-art svg{width:85px;height:80px}
+.cr-character p{font-size:14px}.cr-transformation svg{width:50px;height:50px}
+.cr-delivery-art{display:flex;align-items:center;justify-content:center;gap:25px;background:#dcebd9;overflow:hidden;height:95px}
+.cr-delivery-art>svg{width:105px;height:80px;animation:cr-arrive .65s ease-out}.cr-delivery-art>span svg{width:57px;height:57px}
+.cr-unpack-bundle{display:flex;justify-content:center;gap:18px;padding:16px;background:#f1dfc3;border:2px dashed #b2824d;border-radius:13px;cursor:grab}
+.cr-unpack-bundle>span{display:flex;flex-direction:column;align-items:center;font-size:12px;gap:5px;max-width:120px;text-align:center}.cr-unpack-bundle svg{width:72px;height:72px}
+.cr-storage-targets{display:flex;gap:14px;margin:18px 0}.cr-storage-targets button{flex:1;display:flex;align-items:center;justify-content:center;gap:15px;min-height:90px}.cr-storage-targets svg{width:50px;height:55px}
+.cr-delivery-list .cr-ui-icon{width:30px;height:35px}.cr-delivery-list>div{flex-wrap:wrap}.cr-delivery-list button{font-size:11px;padding:7px}
+.cr-shelf-reward{animation:cr-stock-in .7s ease-out}.cr-note{line-height:1.5}
+@keyframes cr-tour-pulse{50%{outline-color:#73b9e7;box-shadow:0 0 0 5px #2583c326}}
+@keyframes cr-arrive{from{transform:translateX(-130px)}to{transform:translateX(0)}}
+@keyframes cr-stock-in{from{box-shadow:inset 0 0 0 8px #7dd998}to{box-shadow:inset 0 0 0 0 transparent}}
+@media(max-height:780px){.cr-product-art{height:42px}.cr-product-art svg{height:41px;width:50px}.cr-coffee-image{height:67px;width:64px}.cr-drink-art{height:67px}.cr-drink-art svg{height:61px}.cr-stock-sign{font-size:12px}.cr-guide .cr-guide-face{display:none}.cr-guide>div{flex:1}.cr-guide b{font-size:11px}}
+@media(max-width:800px){.cr-reputation{min-width:125px}.cr-stars svg{width:13px;height:13px}.cr-rating>b{font-size:11px!important}.cr-nav .cr-ui-icon{width:18px;height:18px}.cr-guide .cr-text{display:block;font-size:9px}.cr-tour-target:after{font-size:7px}.cr-guide>div{flex:1}.cr-customer-art{width:34px;height:43px}}
+@media(max-width:520px){.cr-reputation{min-width:98px}.cr-rating{gap:3px!important}.cr-stars{gap:0}.cr-stars svg{width:11px;height:11px}.cr-rating>b{font-size:10px!important}.cr-header .cr-brand{min-width:105px}.cr-nav .cr-ui-icon{width:15px;height:15px}.cr-guide b{font-size:10px}.cr-guide .cr-text{padding:5px;font-size:8px}.cr-product-art{height:33px}.cr-product-art svg{height:33px;width:40px}.cr-stock-floor .cr-ui-icon{width:21px;height:23px}.cr-company-icon svg{width:26px;height:26px}.cr-coffee-image{height:65px;width:60px}.cr-drink-art{height:65px}.cr-storage-targets{gap:8px}.cr-storage-targets button{font-size:11px;gap:7px;padding:10px}.cr-storage-targets svg{width:35px;height:40px}.cr-unpack-bundle{gap:10px}.cr-unpack-bundle svg{width:50px;height:50px}.cr-unpack-bundle b{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.cr-game *,.cr-overlay *{animation:none!important}}
+
+.cr-intro blockquote{font-family:Patrick Hand,sans-serif}
