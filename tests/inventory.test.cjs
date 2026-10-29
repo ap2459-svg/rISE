@@ -6,6 +6,14 @@ const fixtures={};
 const near=(a,b,label)=>assert(Math.abs(a-b)<1e-6,`${label}: ${a} != ${b}`);
 const line=(name,qty,supplier='quick',frozen=false,express=false)=>({name,qty,supplier,frozen,express});
 const clear=g=>INVENTORY_ITEMS.forEach(i=>g.discard(i.name));
+function requiredPlan(g,style='balanced') {
+  g.observe('tab','trends');g.observe('supplier','quick');g.observe('supplier','budget');
+  const buffer={buffer:g.day>=6?4:2,reorder:2};
+  const plans={1:{servings:8},2:{...buffer,supplier:style==='budget'?'budget':style==='premium'?'premium':'quick'},3:{...buffer,servings:8},4:{strategy:g.strategy},5:{prices:{latte:g.menu.latte.price,oat:g.menu.oat.price}},6:{...buffer,capacity:g.helper?'helper':'buffer',investment:'hold',reason:'cash'},7:{...buffer,servings:8,investment:'hold',reason:'cash'}};
+  if(style==='premium')g.observe('supplier','premium');
+  assert.equal(g.commitPlan(plans[g.day]),null);
+}
+function requiredReview(g) { assert.equal(g.reflect(g.reviewOptions().correct,'stock'),null); }
 function shelve(g,fifo=true){g.deliveries.filter(d=>d.arrived&&!d.shelved).forEach(d=>g.shelve(d.id,fifo));}
 function waitPlanning(g){
   let limit=100;
@@ -168,7 +176,7 @@ function accounting(g){
   assert.equal(g.deliveryDecision(d.id,'refund'),null);const cash=g.cash;
   assert(g.deliveryDecision(d.id,'refund'));assert.equal(g.cash,cash);accounting(g);
   g.day=d.dueDay;g.clock+=100;g.processDeliveries();assert.equal(g.metrics.deliveries,0,'cancelled orders never arrive or affect supplier performance');g.day=1;
-  g.placeOrder([line('Cup',8,'budget')]);g.phase='review';assert(g.nextDay());
+  g.placeOrder([line('Cup',8,'budget')]);g.phase='shift';g.finish();assert.equal(g.nextDay(),false);requiredReview(g);assert(g.nextDay());
   assert(g.deliveries[1].arrived,'budget order arrives next morning');
   const fresh=new InventorySim(12);fresh.placeOrder([line('Cup',8,'quick',false,true)]);
   assert(fresh.deliveries[0].expected<=5,'express is fast');
@@ -195,7 +203,7 @@ function accounting(g){
   assert.equal(g.tutorialStep(),'restock');assert.equal(g.completeTutorial(),false,'tutorial cannot finish without a usable drink');
   g.menu.latte.enabled=true;
   assert(g.completeTutorial());assert.equal(g.completeTutorial(),false);
-  g.briefed=true;assert.equal(g.open(),null);accounting(g);
+  g.briefed=true;fixtures['day-1-ready']=g.save();assert(g.open(),'tutorial does not bypass required plan');requiredPlan(g);assert.equal(g.open(),null);accounting(g);
   const skip=new InventorySim(9),prior=skip.cash;skip.skipTutorial();assert.equal(skip.cash,prior);assert.equal(skip.tutorialStep(),null);assert(skip.open(),'skipping cannot bypass food safety');
   assert(InventorySim.restore(skip.save()).tutorial.skipped);
 }
@@ -306,6 +314,54 @@ function accounting(g){
   }
 }
 
+// Required concepts cannot be skipped through tutorial skipping, reloads or direct progression.
+{
+  const g=new InventorySim(4);g.skipTutorial();clear(g);g.briefed=true;
+  for(const name of MENU[0].recipe)g.addLot(name,8,.2,14);
+  assert.match(g.open(),/operations plan/);
+  assert(g.commitPlan({servings:0}));assert.equal(g.lesson.plan,null);
+  assert.equal(g.commitPlan({servings:8}),null);assert.match(g.open(),/older stock/);
+  g.placeOrder([line('Cup',1)]);waitPlanning(g);
+  const after=g.cash;assert(g.commitPlan({servings:20}));assert.equal(g.cash,after,'no repeat plan spending');
+  assert.equal(g.open(),null);g.finish();assert.equal(g.nextDay(),false);
+  assert(g.reflect('waste','stock'));assert.equal(g.lesson.attempts.length,1);assert.equal(g.lesson.review,null);
+  requiredReview(g);const restored=InventorySim.restore(g.save());assert(restored);assert(restored.lesson.review);
+  assert(restored.nextDay());assert.equal(restored.lesson.plan,null);
+  assert(restored.commitPlan({supplier:'quick',buffer:2,reorder:2}));
+  restored.observe('supplier','quick');restored.observe('supplier','budget');
+  const oldTarget=restored.suggested('Decaf');
+  assert.equal(restored.commitPlan({supplier:'quick',buffer:3,reorder:4}),null);
+  assert.match(restored.planProblem(),/Place an order/);
+  assert.equal(restored.placeOrder([line('Napkin',1)]),null);assert.equal(restored.planProblem(),null);
+  assert.equal(restored.safetyStock,3);assert.equal(restored.reorderPoint,4);
+  assert(restored.suggested('Decaf')>oldTarget,'chosen reorder point and safety stock affect actual purchasing recommendations');
+  const record=restored.learningRecord();assert.equal(record.days[1].attempts.length,2);assert(record.events.some(e=>e.kind==='fifo'));
+  record.events.length=0;assert(restored.learning.events.length,'export is an independent copy');
+  const legacy=JSON.parse(restored.save());legacy.version=4;delete legacy.state.learning;delete legacy.state.safetyStock;delete legacy.state.reorderPoint;
+  const migrated=InventorySim.restore(JSON.stringify(legacy));assert(migrated);assert(migrated.learning.days[1].plan.legacy);
+}
+{
+  const g=new InventorySim(6);g.day=3;assert(g.commitPlan({servings:8,buffer:2,reorder:2}));
+  g.observe('tab','trends');assert.equal(g.commitPlan({servings:8,buffer:2,reorder:2}),null);
+  assert.match(g.planProblem(),/Cold Brew/,'forecast must be tested with a real menu item');
+  g.day=4;assert(g.commitPlan({strategy:'wrong'}));assert.equal(g.commitPlan({strategy:'hybrid'}),null);assert(g.strategyChosen);
+  assert.match(g.planProblem(),/bakery/,'make-or-buy requires stocked bakery on menu');
+  g.day=5;assert(g.commitPlan({prices:{latte:6}}));const before=JSON.stringify(g.menu);
+  assert(g.commitPlan({prices:{latte:6,oat:999}}));assert.equal(JSON.stringify(g.menu),before,'invalid pricing is atomic');
+  assert.equal(g.commitPlan({prices:{latte:6.25,oat:7}}),null);assert.equal(g.menu.latte.price,6.25);
+  assert.match(g.planProblem(),/priced/,'prices must apply to a drink actually offered');
+  g.day=6;g.cash=-740;const cash=g.cash;
+  assert(g.commitPlan({capacity:'helper',buffer:2,reorder:2,investment:'fridge',reason:'waste'}));assert.equal(g.cash,cash);assert(!g.helper);
+  assert.equal(g.commitPlan({capacity:'focus',buffer:2,reorder:2,investment:'hold',reason:'cash'}),null);
+  assert.equal(MENU.filter(p=>p.kind==='drink'&&g.menu[p.id].enabled).length,1,'focus changes real menu');
+  g.day=7;g.observe('tab','trends');assert.equal(g.commitPlan({servings:8,buffer:1,reorder:3,investment:'hold',reason:'cash'}),null);
+  g.phase='shift';g.finish();assert.equal(g.ending(),null);requiredReview(g);assert(g.ending());
+  const helper=new InventorySim(7);helper.day=6;const start=helper.cash;
+  assert.equal(helper.commitPlan({capacity:'helper',buffer:2,reorder:2,investment:'energy',reason:'capacity'}),null);
+  assert(helper.helper);assert(helper.upgrades.includes('energy'));near(start-helper.cash,60,'helper and investment charged exactly once');
+  const saved=helper.cash;assert(helper.commitPlan({capacity:'helper',buffer:2,reorder:2,investment:'energy',reason:'capacity'}));assert.equal(helper.cash,saved);
+  assert.equal(InventorySim.restore(helper.save()).safetyStock,2);
+}
 // A public-information player: small batches, periodic observed-stock checks, no future schedule.
 function campaign(seed,style='balanced',saveMidway=false){
   let g=new InventorySim(seed);g.introSeen=true;const daily=[];
@@ -332,7 +388,7 @@ function campaign(seed,style='balanced',saveMidway=false){
     for(const p of MENU.filter(p=>p.kind==='bakery'&&g.menu[p.id].enabled))if(g.stock(p.name)<=3&&g.frozen(p.name)>=4)g.bake(p.name);
   };
   for(let day=1;day<=7;day++){
-    if(seed===11&&style==='balanced'&&[4,5,6,7].includes(day))fixtures[`day-${day}`]=g.save();
+    if(seed===11&&style==='balanced'&&[2,3,4,5,6,7].includes(day))fixtures[`day-${day}`]=g.save();
     assert.equal(g.day,day);g.briefed=true;clear(g);
     g.setStrategy(style==='inhouse'?'inhouse':'outsource');
     if(style==='overprice'&&day>=5) for(const p of MENU)if(p.day<=day)g.setPrice(p.id,Math.floor(p.price*1.75*4)/4);
@@ -340,6 +396,7 @@ function campaign(seed,style='balanced',saveMidway=false){
     if(style==='premium'&&day===4)g.buyUpgrade('ordering');
     if(day>=6&&style==='inhouse')g.hireHelper();
     stockUp(true);waitPlanning(g);bake();waitPlanning(g);clear(g);
+    requiredPlan(g,style);
     const opening=g.open();
     if(opening) return {seed,style,blocked:opening,day,cash:g.cash};
     for(let second=0;g.phase==='shift'&&second<1000;second++){
@@ -362,9 +419,12 @@ function campaign(seed,style='balanced',saveMidway=false){
     near(r.cash-r.openingCash,r.revenue-r.purchases-r.operating-r.conversion,'daily cash flow');
     daily.push({day,served:r.served,arrived:r.arrived,profit:Math.round(r.profit),cash:Math.round(g.cash)});
     accounting(g);assert.equal(g.finish(),false,'cannot collect result twice');
+    if(seed===11&&style==='balanced')fixtures[`review-${day}`]=g.save();
+    requiredReview(g);
     if(day<7)assert(g.nextDay());
   }
   const end=g.ending();assert(end);assert.equal(g.reports.length,7);
+  assert(g.learningRecord().curriculum.every(c=>c.completed),'every campaign requires all seven concept groups');
   if(seed===11&&style==='balanced')fixtures.ending=g.save();
   if(seed===11&&style==='overprice')fixtures.failure=g.save();
   return {seed,style,tier:end.tier,balance:Math.round(end.balance),service:Math.round(end.service*100),reputation:end.reputation,waste:Math.round(end.waste),daily};

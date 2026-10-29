@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const CONFIG = Object.freeze({
-    version:4, days:7, shiftSeconds:240, openingCash:-500, creditLimit:750,
+    version:5, days:7, shiftSeconds:240, openingCash:-500, creditLimit:750,
     openingReputation:20, dailyOverhead:14, overnightSeconds:75,
     patience:38, bakeSeconds:24, bakeBatch:4, bakeConversion:3.4,
     arrivalIntervals:[15,13,11,11,10,6.8,6.5], serviceSeconds:6, seed:19725
@@ -77,6 +77,7 @@
       this.menu=Object.fromEntries(MENU.map(p=>[p.id,{enabled:['latte','cookie'].includes(p.id),price:p.price}]));
       this.strategy='hybrid'; this.serial=0; this.supplierStats={};
       this.alerts={dismissedExpiry:[],losses:[]};
+      this.learning={days:{},events:[]}; this.reorderPoint=2; this.safetyStock=2;
       this.tutorial={active:true,stockOpened:false,inspected:false,missing:false,suppliersOpened:false,compared:[],cartAdded:false,reviewed:false,ordered:false,shelved:false,menuSeen:false,recipeSeen:false,trendsSeen:false,finished:false,skipped:false};
       this.notes=[]; this.reactions=[]; this.introSeen=false; this.sound=true; this.lastExplanation='';
       // The previous manager's spoiled goods are already included in the inherited debt.
@@ -91,6 +92,79 @@
     }
     pick(list) { return list[Math.floor(this.random()*list.length)]; }
     get info() { return DAYS[this.day-1]; }
+    get lesson() { return this.learning.days[this.day]||={compared:[],viewed:[],plan:null,review:null,attempts:[]}; }
+    observe(section,value) {
+      if(this.phase!=='planning') return;
+      if(section==='supplier'&&this.supplier(value)&&!this.lesson.compared.includes(value))this.lesson.compared.push(value);
+      if(section==='tab'&&['stock','supply','menu','trends'].includes(value)&&!this.lesson.viewed.includes(value))this.lesson.viewed.push(value);
+    }
+    planProblem() {
+      if(!this.lesson.plan)return 'Complete today’s required operations plan before opening.';
+      if(this.day===1&&!this.learning.legacyFIFO&&!this.learning.events.some(e=>e.kind==='fifo'))return 'Unpack a delivery with older stock in front before opening.';
+      if(this.day===2&&!this.deliveries.some(d=>!d.cancelled&&d.learningDay===2&&d.supplier===this.lesson.plan.supplier))return 'Place an order with your chosen supplier so you can evaluate the delivery.';
+      if(this.day===3&&(!this.menu.oat.enabled||this.servings('oat')<1))return 'Prepare at least one Oat Milk Cold Brew and put it on the menu to test your forecast.';
+      if(this.day===4&&!MENU.some(p=>p.kind==='bakery'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'Put a stocked bakery item on the menu to test your make-or-buy strategy. Bake frozen portions or order ready-made stock.';
+      if(this.day===5&&!['latte','oat'].some(id=>this.menu[id].enabled&&this.servings(id)>0))return 'Stock and enable at least one of the drinks you priced so customers can respond to your decision.';
+      return null;
+    }
+    commitPlan(p) {
+      if(this.phase!=='planning'||!p||this.lesson.plan)return 'This operations plan is already saved or the shift has started.';
+      const whole=(v,min,max)=>Number.isInteger(v)&&v>=min&&v<=max;
+      if([1,3,7].includes(this.day)&&!whole(p.servings,1,40))return 'Choose a whole serving target from 1 to 40.';
+      if([2,3,6,7].includes(this.day)&&(!whole(p.buffer,0,12)||!whole(p.reorder,1,12)))return 'Choose safety stock from 0 to 12 and a reorder point from 1 to 12.';
+      if(this.day===2&&(this.lesson.compared.length<2||!this.lesson.compared.includes(p.supplier)))return 'Inspect at least two supplier offers and select one you compared.';
+      if([3,7].includes(this.day)&&!this.lesson.viewed.includes('trends'))return 'Open Sales & trends before making your forecast.';
+      if(this.day===4&&!['inhouse','outsource','hybrid'].includes(p.strategy))return 'Choose how to supply your bakery.';
+      if(this.day===5) {
+        if(!p.prices||Object.keys(p.prices).length!==2)return 'Set and confirm prices for both drinks.';
+        for(const id of ['latte','oat']) {
+          const product=MENU.find(m=>m.id===id),v=p.prices[id];
+          if(!Number.isFinite(v)||v<product.price*.5||v>product.price*1.8||Math.abs(v*4-Math.round(v*4))>1e-8)return 'Use valid prices in $0.25 steps for both drinks.';
+        }
+      }
+      if(this.day===6&&!['helper','focus','buffer'].includes(p.capacity))return 'Choose a rush capacity strategy.';
+      if([6,7].includes(this.day)&&!['fridge','storage','energy','hold'].includes(p.investment))return 'Compare improvements and choose one, or preserve cash.';
+      if([6,7].includes(this.day)&&!['waste','capacity','cash'].includes(p.reason))return 'Choose the operational reason for your investment decision.';
+      if(p.capacity==='buffer'&&p.buffer===0)return 'A buffer strategy needs at least one extra unit. Otherwise choose a helper or focused menu.';
+      const upgrade=UPGRADES.find(u=>u.id===p.investment&&!this.upgrades.includes(u.id));
+      const cost=(upgrade?.cost||0)+(this.day===6&&p.capacity==='helper'&&!this.helper?22:0);
+      if(cost>this.spendable)return 'This plan exceeds available cash and credit. Choose another strategy.';
+      // Validate everything before applying choices. No cart purchases happen here.
+      if(this.day===4)this.setStrategy(p.strategy);
+      if(this.day===5)for(const [id,value]of Object.entries(p.prices))this.setPrice(id,value);
+      if(this.day===6&&p.capacity==='helper'&&!this.helper)this.hireHelper();
+      if(this.day===6&&p.capacity==='focus') {
+        const best=MENU.filter(m=>m.kind==='drink'&&m.day<=this.day).sort((a,b)=>this.servings(b.id)-this.servings(a.id))[0];
+        for(const m of MENU.filter(m=>m.kind==='drink'))this.menu[m.id].enabled=m.id===best.id;
+        p={...p,focused:best.id};
+      }
+      if(upgrade)this.buyUpgrade(upgrade.id);
+      if(p.buffer!==undefined){this.safetyStock=p.buffer;this.reorderPoint=p.reorder;}
+      this.lesson.plan=clone(p);
+      this.learning.events.push({kind:'plan',day:this.day,clock:this.clock,decision:clone(p),cash:this.cash});
+      return null;
+    }
+    reviewOptions() {
+      const r=this.reports.find(r=>r.day===this.day);if(!r)return null;
+      const loss=r.lostSales||0,waste=r.waste||0;
+      const correct=loss===0&&waste===0?'stable':loss>=waste?'sales':'waste';
+      return {correct,loss,waste,profit:r.profit,previousProfit:this.reports.find(r=>r.day===this.day-1)?.profit??null};
+    }
+    reflect(answer,action) {
+      if(this.phase!=='review'||this.lesson.review)return 'This review is already complete or the shift is still running.';
+      const evidence=this.reviewOptions();
+      if(!evidence||!['sales','waste','stable'].includes(answer)||!['stock','supplier','price','capacity','smaller','maintain'].includes(action))return 'Compare the results and choose your next improvement.';
+      const correct=answer===evidence.correct||(evidence.loss===evidence.waste&&evidence.loss>0&&['sales','waste'].includes(answer));
+      this.lesson.attempts.push({answer,action,correct,evidence:clone(evidence)});
+      if(!correct)return 'Compare missed revenue with waste cost. Choose the larger issue (either if tied), or stable if both are zero.';
+      this.lesson.review={answer,action,evidence:clone(evidence)};
+      this.learning.events.push({kind:'review',day:this.day,decision:clone(this.lesson.review)});
+      return null;
+    }
+    learningRecord() {
+      const concepts={1:['Inventory management','Expiration','FIFO'],2:['Supply chain reliability','Lead time','Reorder points'],3:['Demand forecasting','Safety stock','Uncertainty'],4:['Make-or-buy analysis','Bottlenecks','Capacity'],5:['Engineering economics','Profit margins','Price-sensitive demand'],6:['Optimization','Resource allocation','Capacity planning'],7:['Systems thinking','Continuous improvement','Investment tradeoffs']};
+      return {version:1,scope:'Participation and in-game decisions; not a validated knowledge test.',day:this.day,curriculum:Object.entries(concepts).map(([day,topics])=>({day:Number(day),topics,completed:!!this.learning.days[day]?.review&&!this.learning.days[day]?.plan?.legacy})),days:clone(this.learning.days),events:clone(this.learning.events),results:clone(this.reports)};
+    }
     get rating() { return Math.round(this.reputation/2)/10; }
     get spendable() { return Math.max(0,this.cash+this.creditLimit); }
     get profit() { return this.metrics.revenue-this.metrics.cogs-this.metrics.waste-this.metrics.operating; }
@@ -235,12 +309,13 @@
         const offer=lines[0].offer, supplier=this.supplier(lines[0].supplier), failed=this.random()>offer.reliability;
         const delayed=failed&&this.random()<.7, error=failed&&!delayed, lead=offer.lead;
         this.deliveries.push({
-          id:++this.serial,supplier:supplier.id,name:supplier.name,placed:this.clock,expected:this.clock+lead,dueDay:this.day+offer.dayOffset,nextMorning:!!offer.dayOffset,
+          id:++this.serial,learningDay:this.day,supplier:supplier.id,name:supplier.name,placed:this.clock,expected:this.clock+lead,dueDay:this.day+offer.dayOffset,nextMorning:!!offer.dayOffset,
           eta:this.clock+lead+(delayed?10+Math.floor(this.random()*9):0),reliability:offer.reliability,
           delayed,error,arrived:false,shelved:false,notified:false,delayNotified:false,
           lines:lines.map(l=>({name:l.name,qty:l.qty,cost:l.offer.unit,quality:l.offer.quality,life:l.offer.life,frozen:l.offer.frozen,written:false}))
         });
       }
+      this.learning.events.push({kind:'purchase',day:this.day,clock:this.clock,cart:clone(cart),goods:quote.goods,shipping:quote.shipping,total:quote.total});
       this.tutorial.ordered=true; this.earn('order','Supply chain started');
       this.say('Order placed. Credit pays for stock now; sold or wasted stock becomes a product expense.');
       return null;
@@ -276,7 +351,7 @@
         this.lots[l.name].sort((a,b)=>((a.received??0)-(b.received??0)||a.id-b.id));
       }
       d.shelved=true; this.tutorial.shelved=true;
-      if(fifo) { this.earn('fifo','First in, first out'); this.lastExplanation='Older products in front: fewer items expire before you can sell them. That is FIFO.'; }
+      if(fifo) { this.learning.events.push({kind:'fifo',day:this.day,delivery:id}); this.earn('fifo','First in, first out'); this.lastExplanation='Older products in front: fewer items expire before you can sell them. That is FIFO.'; }
       else this.lastExplanation='Delivery stored. Older stock stays in front so it is used first.';
       return true;
     }
@@ -435,7 +510,7 @@
       return {label:'Steady',arrow:'→',level:'steady'};
     }
     suggested(name) {
-      const target=Math.ceil(this.rate(name)*65)+(this.day>=6?4:2);
+      const target=Math.max(this.reorderPoint,Math.ceil(this.rate(name)*65))+this.safetyStock;
       return Math.max(0,Math.min(target-this.stock(name)-this.frozen(name)-this.incoming(name),this.capacity(name)-this.occupied(name)-this.incoming(name)));
     }
     chooseProduct(kind) {
@@ -591,6 +666,7 @@
       if(!this.briefed) return 'Read today’s short briefing first.';
       if(this.expiredCount()) return 'Clear the expired stock before opening. Expired food cannot be served.';
       if(!this.strategyChosen) return 'Choose today’s bakery strategy in Menu & bakery.';
+      const lessonProblem=this.planProblem();if(lessonProblem)return lessonProblem;
       if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0)) return 'Stock at least one complete drink recipe before opening.';
       const overhead=CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0);
       if(!this.spendOperating(overhead)) return `Keep $${overhead} available for today’s rent, power and staff.`;
@@ -657,11 +733,13 @@
     }
     nextDay() {
       if(this.phase!=='review'||this.day>=CONFIG.days) return false;
+      if(!this.lesson.review)return false;
       this.day++; this.beginDay(); this.clock+=CONFIG.overnightSeconds;
       this.processDeliveries(); this.processBatches(); this.markExpired(); return true;
     }
     ending() {
       if(this.day!==7||!['review','complete'].includes(this.phase)) return null;
+      if(!this.lesson.review)return null;
       const served=sum(this.reports.map(r=>r.served)),arrived=sum(this.reports.map(r=>r.arrived)),service=served/Math.max(1,arrived);
       const waste=sum(this.reports.map(r=>r.waste)),revenue=sum(this.reports.map(r=>r.revenue)),profit=sum(this.reports.map(r=>r.profit));
       const score=Math.round(clamp(service*35+this.reputation*.35+clamp((this.balance+500)/700,0,1)*20+Math.max(0,10-waste/12),0,100));
@@ -682,7 +760,11 @@
       try {
         if(typeof serialized!=='string'||serialized.length>1500000) return null;
         const envelope=JSON.parse(serialized),s=envelope.state;
-        if(![2,3,CONFIG.version].includes(envelope.version)||!s||!Number.isInteger(s.day)||s.day<1||s.day>7) return null;
+        if(![2,3,4,CONFIG.version].includes(envelope.version)||!s||!Number.isInteger(s.day)||s.day<1||s.day>7) return null;
+        if(envelope.version<5) {
+          s.learning={days:{},events:[],legacyThrough:s.phase==='planning'?s.day-1:s.day,legacyFIFO:!!s.tutorial?.shelved};s.reorderPoint=2;s.safetyStock=2;
+          for(let day=1;day<=s.learning.legacyThrough;day++)s.learning.days[day]={compared:[],viewed:[],plan:{legacy:true},review:{legacy:true},attempts:[]};
+        }
         if(envelope.version<4) {
           s.alerts={dismissedExpiry:[],losses:[]};
           if(s.metrics)Object.assign(s.metrics,{stockLost:0,stockLostRevenue:0});
@@ -705,7 +787,9 @@
           if(value&&typeof value==='object') return Object.keys(value).every(k=>!['__proto__','constructor','prototype'].includes(k))&&Object.values(value).every(safe);
           return true;
         };
-        if(!safe(s)||!s.alerts||!Array.isArray(s.alerts.dismissedExpiry)||!Array.isArray(s.alerts.losses)||
+        if(!safe(s)||!s.learning||!s.learning.days||!Array.isArray(s.learning.events)||!Number.isInteger(s.reorderPoint)||s.reorderPoint<1||s.reorderPoint>12||!Number.isInteger(s.safetyStock)||s.safetyStock<0||s.safetyStock>12||
+          Object.values(s.learning.days).some(l=>!l||!Array.isArray(l.compared)||!Array.isArray(l.viewed)||!Array.isArray(l.attempts))||
+          !s.alerts||!Array.isArray(s.alerts.dismissedExpiry)||!Array.isArray(s.alerts.losses)||
           s.alerts.losses.some(l=>!Array.isArray(l.missing)||l.missing.some(n=>!BY_NAME[n])||!Array.isArray(l.products)||l.products.some(id=>!MENU.some(p=>p.id===id))||!Number.isFinite(l.revenue)||l.revenue<0)||
           !Number.isInteger(s.seed)||s.seed<0||s.seed>4294967295||
           !Number.isFinite(s.cash)||!Number.isFinite(s.clock)||!Number.isFinite(s.elapsed)||

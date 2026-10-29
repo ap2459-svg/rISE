@@ -156,7 +156,44 @@
   }
   function briefing() {
     game.briefed=true;save();
-    dialog('briefing',`Day ${game.day}: ${esc(game.info.title)}`,`<div class="cr-character"><span>${uiIcon(game.info.face)}</span><p>${esc(game.info.text)}</p></div><ol class="cr-goals">${game.info.goals.map(g=>`<li>${esc(g)}</li>`).join('')}</ol><div class="cr-note">Plan at your own pace. The shift lasts about 4 minutes at 1× speed.</div>${game.day===5?'<p>Pricing is now unlocked in Menu & bakery.</p>':''}`,btn('briefing-done',game.day===1?'Enter the stockroom →':'Prepare the café →','cr-primary'));
+    const prior=game.learning.days[game.day-1]?.review?.action;
+    const focus={stock:'stock targets and reorder points',supplier:'supplier and delivery timing',price:'prices and margins',capacity:'service capacity',smaller:'smaller batches',maintain:'monitoring the current strategy'};
+    dialog('briefing',`Day ${game.day}: ${esc(game.info.title)}`,`<div class="cr-character"><span>${uiIcon(game.info.face)}</span><p>${esc(game.info.text)}</p></div><ol class="cr-goals">${game.info.goals.map(g=>`<li>${esc(g)}</li>`).join('')}</ol>${prior?`<p class="cr-note">Your improvement focus: ${focus[prior]}. Use today’s controls to test it.</p>`:''}<div class="cr-note">Complete your operations plan before opening. The shift lasts about 4 minutes at 1× speed.</div>${game.day===5?'<p>Pricing is now unlocked in Menu & bakery.</p>':''}`,btn('briefing-done',game.day===1?'Enter the stockroom →':'Prepare the café →','cr-primary'));
+  }
+  function operationsPlan() {
+    if(game.lesson.plan){toast('Today’s operations plan is saved. Use the tabs to carry it out.');return;}
+    const day=game.day;
+    const number=(id,label,min,max,value='')=>`<label>${label}<input id="cr-plan-${id}" type="number" min="${min}" max="${max}" step="1" value="${value}"></label>`;
+    const select=(id,label,options)=>`<label>${label}<select id="cr-plan-${id}"><option value="">Choose…</option>${options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label>`;
+    const buffer=number('buffer','Extra units for uncertainty (safety stock)',0,12)+number('reorder','Reorder when stock reaches this many units',1,12);
+    const investment=`<div class="cr-plan-offers">${UPGRADES.filter(u=>['fridge','storage','energy'].includes(u.id)).map(u=>`<p><b>${esc(u.name)} · ${money(u.cost)}</b><small>${esc(u.effect)}${game.upgrades.includes(u.id)?' Already installed.':''}</small></p>`).join('')}</div>`+select('investment','Where should limited money go?', [['hold','Preserve cash'],...UPGRADES.filter(u=>['fridge','storage','energy'].includes(u.id)&&!game.upgrades.includes(u.id)).map(u=>[u.id,`${u.name} · ${money(u.cost)}`])])+select('reason','What constraint are you addressing?',[['waste','Freshness and waste'],['capacity','Space or operating capacity'],['cash','Cash and operating costs']]);
+    let content='';
+    if(day===1)content=`<p>Choose how many Vanilla Lattes to prepare. Each needs coffee, milk, vanilla, a cup, a lid and a napkin. Your plan will draft only missing supplies; review the cart before buying.</p>${number('servings','Opening serving target',1,40)}<p class="cr-note">Inspect dates and discard expired food. At delivery, choose older stock in front: first in, first out (FIFO).</p>`;
+    if(day===2)content=`<p>Inspect at least two offers for 8 units of Whole Milk. Prices exclude shipping; tomorrow’s stock cannot serve today’s customers.</p><div class="cr-plan-offers">${SUPPLIERS.filter(s=>s.unlock<=day).map(s=>{const o=game.offer('Whole Milk',s.id,8);return btn('plan-compare',`<b>${s.name}${game.lesson.compared.includes(s.id)?' · inspected':''}</b><small>${money(o.unit*8)} · ${o.dayOffset?'tomorrow':o.lead+'s today'} · ${(o.reliability*100).toFixed(o.reliability>.99&&o.reliability<1?1:0)}% reliable · ${o.life} days fresh · ${Math.round(o.quality*100)}% quality</small>`,'',`data-supplier="${s.id}"`);}).join('')}</div>${select('supplier','Choose your purchasing supplier',SUPPLIERS.filter(s=>s.unlock<=day).map(s=>[s.id,s.name]))}${buffer}<p class="cr-note">Place a real order with this company before opening. Choose only supplies you need; the order is not automatic.</p>`;
+    if(day===3||day===7)content=`<p>${day===3?'Cold brew demand is rising.':'Use yesterday’s results to prepare your final shift.'} Open Sales & trends first. Choose a target, then add a buffer for uncertainty. This is your estimate, not a promised customer count.</p>${btn('plan-trends','Inspect Sales & trends')}${number('servings',day===3?'Cold brew serving estimate':'Vanilla Latte serving estimate',1,40)}${buffer}${day===7?investment:''}`;
+    if(day===4)content=`<p>Drinks and baking share staff time. Compare the whole process before choosing.</p><div class="cr-plan-offers"><p><b>In-house</b><small>Cheaper frozen portions; 4 per batch. Labor + energy ${money(CONFIG.bakeConversion)} per batch; ${CONFIG.bakeSeconds}s oven time. Baking competes with drink service.</small></p><p><b>Outsource</b><small>Higher ready-made purchase cost. No oven work, but delivery reliability matters.</small></p><p><b>Hybrid</b><small>Combine both. More flexibility, but coordinate two stock types and limited space.</small></p></div>${select('strategy','How will you supply the bakery?',[['inhouse','Bake in-house'],['outsource','Buy ready-made'],['hybrid','Hybrid']])}`;
+    if(day===5)content=`<p>Set prices for two drinks. Keeping an existing price is a valid decision. Higher prices improve margin per sale but may reduce demand.</p>${['latte','oat'].map(id=>{const p=MENU.find(p=>p.id===id);return `<label>${p.name} · unit cost ${money(game.unitCost(id))}<input id="cr-plan-price-${id}" type="number" min="${p.price*.5}" max="${p.price*1.8}" step="0.25" value="${game.menu[id].price}"><small id="cr-plan-margin-${id}">Estimated profit per sale: ${money(game.menu[id].price-game.unitCost(id))} before overhead</small></label>`;}).join('')}<p class="cr-note">Confirming applies both prices to the actual menu. Compare revenue, lost sales and profit after the shift.</p>`;
+    if(day===6)content=`<p>Festival traffic is uncertain. Choose how to protect service, then allocate money to an improvement or keep it available for supplies.</p>${select('capacity','Rush strategy',[['helper','Hire help · $22 · two customers prepared at once'],['focus','Focus on the best-stocked drink · fewer choices'],['buffer','Use stock buffers · keep current service capacity']])}${buffer}${investment}`;
+    dialog('operations-plan',`Day ${day} · Your required operations plan`,`<div class="cr-plan-form">${content}</div><p class="cr-note">${money(game.spendable)} available. Saving applies your choices; cart purchases still need checkout confirmation.</p>`,btn('save-plan','Apply my plan','cr-primary')+btn('close','Prepare first'));
+  }
+  function saveOperationsPlan() {
+    const n=id=>Number($(`#cr-plan-${id}`)?.value),v=id=>$(`#cr-plan-${id}`)?.value;
+    const p={};
+    if([1,3,7].includes(game.day))p.servings=n('servings');
+    if([2,3,6,7].includes(game.day)){p.buffer=v('buffer')===''?NaN:n('buffer');p.reorder=n('reorder');}
+    if(game.day===2)p.supplier=v('supplier');
+    if(game.day===4)p.strategy=v('strategy');
+    if(game.day===5)p.prices={latte:n('price-latte'),oat:n('price-oat')};
+    if(game.day===6)p.capacity=v('capacity');
+    if([6,7].includes(game.day)){p.investment=v('investment');p.reason=v('reason');}
+    const problem=game.commitPlan(p);if(problem){error(problem);return;}
+    if(p.supplier)supplier=p.supplier;
+    if(p.servings){const id=game.day===3?'oat':'latte';recipeTargets={...recipeTargets,[id]:Math.min(100,p.servings+(p.buffer||0))};const plan=game.recipePlan(recipeTargets,cart,supplier,express);if(plan)addToCart(plan.lines);tab='supply';}
+    closeDialog();drawTab();toast('Plan saved. Carry it out, then open the café.');
+  }
+  function engineerReview() {
+    const r=game.reviewOptions();if(!r)return;
+    dialog('engineer-review','What did your system teach you?',`<div class="cr-stat-row"><span>Potential revenue missed<b>${money(r.loss)}</b></span><span>Waste cost<b>${money(r.waste)}</b></span><span>Profit<b>${money(r.profit)}</b></span></div><p>${r.previousProfit===null?'This is your first baseline.':`Previous profit: ${money(r.previousProfit)}. Change: ${money(r.profit-r.previousProfit)}.`} Missed revenue is an opportunity, not a charge deducted from cash.</p><div class="cr-plan-form"><label>Which of these two issues was larger?<select id="cr-review-answer"><option value="">Choose…</option><option value="sales">Missed sales revenue</option><option value="waste">Waste cost</option><option value="stable">Neither: both were zero</option></select></label><label>What would you prioritize next?<select id="cr-review-action"><option value="">Choose…</option><option value="stock">Adjust stock targets or reorder points</option><option value="supplier">Change supplier or delivery timing</option><option value="price">Review prices and margins</option><option value="capacity">Improve service capacity</option><option value="smaller">Buy smaller batches to reduce waste</option><option value="maintain">Keep the strategy and monitor results</option></select></label></div><p class="cr-note">Use evidence, then choose your next experiment. Your decision and attempts are saved.</p>`,btn('save-review','Record my improvement','cr-primary')+btn('report','Back to results'));
   }
   function render() {
     lastXP=game.xp;
@@ -167,7 +204,7 @@
       <div class="cr-guide" id="cr-guide" aria-live="polite"></div>
       <div class="cr-work"><nav class="cr-nav" aria-label="Café Rescue sections">
         ${[['stock','shelf','Stockroom'],['supply','truck','Suppliers'],['menu','menu','Menu'],['trends','trend','Sales & trends']].map(([id,icon,label])=>btn('tab',`<span>${uiIcon(icon)}</span>${label}`,'',`data-tab="${id}"`)).join('')}
-        <div class="cr-nav-bottom"><div class="cr-team">${uiIcon("shop")}<b>Your seven-day comeback</b></div>${btn('brief','Today’s mission')}${btn('upgrades',' Improve café')}<small id="cr-xp"></small></div>
+        <div class="cr-nav-bottom"><div class="cr-team">${uiIcon("shop")}<b>Your seven-day comeback</b></div>${btn('operations-plan','Required operations plan')}${btn('brief','Today’s mission')}${btn('upgrades',' Improve café')}<small id="cr-xp"></small></div>
       </nav><section class="cr-workspace" id="cr-workspace" aria-label="Game workspace"></section></div>
       <section class="cr-live"><div id="cr-feedback"></div><button data-action="deliveries" id="cr-dock"></button><div id="cr-live-stats"></div></section>
       <footer class="cr-controls"><div><b id="cr-phase"></b><small id="cr-save"></small></div><div class="cr-clock"><span id="cr-clock"></span><progress id="cr-progress" max="${CONFIG.shiftSeconds}" value="0"></progress></div>
@@ -228,7 +265,7 @@
       <div class="cr-category-tabs" role="group" aria-label="Stock categories">${Object.entries(labels).map(([id,label])=>btn('category',label,'',`data-category="${id}" aria-pressed="${category===id}"`)).join('')}</div>
       <div class="cr-stock-scene"><div class="cr-stock-sign">${['A fresh start begins here','Back in business','The neighborhood is noticing','A café worth coming back to'][game.visualLevel]}</div><div class="cr-window">${uiIcon("sun")}</div>
       <div class="cr-shelves">${products.map(i=>{
-        const fresh=game.stock(i.name),expired=game.spoiled(i.name),ice=game.frozen(i.name),low=fresh<=Math.max(2,Math.ceil(game.rate(i.name)*40));
+        const fresh=game.stock(i.name),expired=game.spoiled(i.name),ice=game.frozen(i.name),low=fresh<=Math.max(game.reorderPoint,Math.ceil(game.rate(i.name)*40));
         const soon=expiring.find(e=>e.name===i.name),status=expired?'expired':fresh===0?'empty':fresh===1?'critical':low?'low':'healthy';
         return `<button class="cr-stock-item ${status} ${soon?'expiring-soon':''}" data-action="inspect" data-product="${esc(i.name)}" draggable="true"><span class="cr-product-art">${productArt(i.name)}</span><b>${esc(i.name)}</b><span class="cr-stock-tag">${expired?` EXPIRED · ${expired}`:fresh?`${fresh} fresh${fresh===1?' · CRITICAL':low?' · LOW':''}`:ice?`${ice} frozen`:'OUT OF STOCK'}</span>${soon?`<small class="cr-expiry-tag">${uiIcon('warning')} ${soon.qty} expire in 1 day</small>`:game.incoming(i.name)?'<small> On the way</small>':!expired&&low?'<small>Reorder recommended</small>':''}</button>`;
       }).join('')}</div>
@@ -326,9 +363,12 @@
     unpacking.done.push(group);sound();
     if(unpacking.done.length===unpacking.groups.length) {
       const id=unpacking.id;unpacking=null;
-      if(game.shelve(id,true)){tab='stock';category='coffee';closeDialog();toast('Shelves restocked! Older stock goes first.');const shelf=$('.cr-workspace');shelf?.classList.remove('cr-shelf-reward');if(shelf){void shelf.offsetWidth;shelf.classList.add('cr-shelf-reward');}}
-      checkEvents();
+      if(game.learning.legacyFIFO||game.learning.events.some(e=>e.kind==='fifo'))finishDelivery(id);
+      else dialog('fifo','Which stock goes in front?',`<p>Keep older usable stock accessible as you add the new delivery. Choose the rotation that helps prevent waste.</p>`,btn('fifo-old','Older usable stock in front','cr-primary',`data-delivery="${id}"`)+btn('fifo-new','New delivery in front','',`data-delivery="${id}"`));
     } else drawUnpack();
+  }
+  function finishDelivery(id) {
+    if(game.shelve(id,true)){tab='stock';category='coffee';closeDialog();drawTab();toast('Shelves restocked. Older stock is used first: FIFO.');checkEvents();}
   }
   function menuView() {
     const unlocked=MENU.filter(p=>p.day<=game.day&&p.kind===(menuSection==='drinks'?'drink':'bakery'));
@@ -387,7 +427,7 @@
       html=`<span>${uiIcon(feedbackMessage.success?'check':'warning')}</span><div class="cr-feedback-message" role="status">${esc(feedbackMessage.text)}</div>`;
     } else {
       const reaction=game.reactions[0],blocked=game.orders.find(o=>o.status==='waiting'&&game.missing(o).length);
-      const low=game.upgrades.includes('tracker')?game.activeIngredients().find(n=>game.stock(n)<=Math.ceil(game.rate(n)*40)&&!game.incoming(n)):null;
+      const low=game.upgrades.includes('tracker')?game.activeIngredients().find(n=>game.stock(n)<=Math.max(game.reorderPoint,Math.ceil(game.rate(n)*40))&&!game.incoming(n)):null;
       html=`<span>${blocked?uiIcon('warning'):game.expiredCount()?uiIcon('bin'):reaction?customerArt(reaction.face):uiIcon('shop')}</span><div><b>${blocked?`Waiting on ${esc(game.missing(blocked)[0])}`:game.expiredCount()?'Expired items need removal':low?`Tracker: reorder ${esc(low)}`:reaction?esc(reaction.name):'Your café, your decisions'}</b><small>${blocked?'Order supplies, check recipes, or change the menu.':game.expiredCount()?'Clear it from the stockroom. It cannot be sold.':reaction?esc(reaction.text):game.phase==='planning'?'Small batches. Safe stock. One smart decision at a time.':'Customers are served automatically. Watch what they need.'}</small></div>`;
     }
     patch('#cr-feedback',html);
@@ -416,7 +456,7 @@
       <div class="cr-result-facts"><span>Lost sales <b>${r.lost}</b></span><span>Potential revenue lost <b>${money(r.lostSales)}</b></span><span>From missing stock <b>${r.stockLost||0} orders · ${money(r.stockLostRevenue||0)}</b></span><span>Expired / discarded <b>${r.wasteUnits} units</b></span><span>Customer Rating ${rating(Math.round(r.reputation/2)/10)}</span><span>Satisfaction <b>${r.satisfaction}/100</b></span><span>Remaining fresh stock <b>${r.remaining}</b></span></div>
       ${game.day===1?'<p class="cr-note">Freshness drops by one day overnight. Check dates before reopening.</p>':''}<div class="cr-insight"><b>${game.day===7?'Your next improvement':'Improve this tomorrow'}</b><span>${esc(r.problem)}</span></div>${game.day===5?'<p class="cr-festival"> Big event tomorrow! Prepare a buffer, extra capacity, or a focused menu.</p>':''}
       ${[2,4].includes(game.day)&&!game.quizAnswered?`<div class="cr-reflection"><b>A quick engineer’s reflection</b><p>${r.stockouts?'You saw customers waiting for supplies. What could reduce that risk?':'A delivery can arrive late even when the price looks good. What could protect service?'}</p>${btn('quiz','Keep a small buffer','',`data-answer="buffer"`)}${btn('quiz','Fill every shelf to the maximum','',`data-answer="maximum"`)}</div>`:''}`,
-      btn(game.day===7?'ending':'next-day',game.day===7?'See the café’s future →':'Next morning →','cr-primary')+(game.day<7?btn('upgrades','Choose an improvement'):'')+btn('performance','View finances'));
+      btn(game.lesson.review?(game.day===7?'ending':'next-day'):'engineer-review',game.lesson.review?(game.day===7?'See the café’s future →':'Next morning →'):'Review evidence & choose an improvement','cr-primary')+(game.day<7?btn('upgrades','Choose an improvement'):'')+btn('performance','View finances'));
   }
   function upgrades() {
     const choices=UPGRADES.filter(u=>u.day<=game.day);
@@ -433,11 +473,11 @@
     dialog('ending',result.title,`<div class="cr-transformation"><div class="cr-before"><span>THEN</span><b>rISE Café</b><p>${uiIcon("shop")}</p><small>Debt · spoiled stock · empty shelves</small></div><div class="cr-after level-${game.visualLevel}"><span>NOW</span><b>rISE Café</b><p>${uiIcon(result.tier==='failure'?'shop':'leaf')}</p><small>${result.tier==='failure'?'A new plan could change the outcome':'Your decisions changed this place'}</small></div></div>
       <div class="cr-end-metrics"><span>Recovery balance<b>${money(CONFIG.openingCash+game.openingValue)} → ${money(result.balance)}</b></span><span>Customer Rating<b>1.0 → ${game.rating.toFixed(1)}/5</b>${rating()}</span><span>Daily profit<b>${money(first.profit)} → ${money(last.profit)}</b></span><span>Satisfaction<b>${first.satisfaction} → ${last.satisfaction}/100</b></span><span>Daily new waste<b>${money(first.waste)} → ${money(last.waste)}</b></span><span>Daily lost sales<b>${first.lost} → ${last.lost}</b></span><span>Supplier performance<b>${reliability}% on time / correct</b></span><span>Business efficiency<b>${result.efficiency}% served · ${result.turnover.toFixed(1)}× turnover</b></span></div>
       <p class="cr-note">${result.tier==='gold'?'Debt cleared, customers returning, and a system that works.':result.tier==='silver'?'You covered the café’s losses and earned another chance.':result.tier==='bronze'?'The café gets a short extension, but still needs to repay its debt.':'The café could not recover enough money and customer trust in time. Replay with a different purchasing, menu or capacity plan.'} Recovery balance = bank balance + inventory still owned.</p><div class="cr-end-score"><b>${result.score}/100</b> Operations score <span> ${game.xp} IE XP</span></div>`,
-      btn('restart-confirm','Try a different strategy','cr-primary')+btn('exit-now','Back to modes'));
+      btn('restart-confirm','Try a different strategy','cr-primary')+btn('export-learning','Download decision record')+btn('exit-now','Back to modes'));
   }
   function help() {
     dialog('help','You run the system. Staff serve the coffee.',`<div class="cr-help-steps"><span>① <b>Prepare</b>Clear expired stock. Order for the menu you choose.</span><span>② <b>Open</b>Watch customers react and respond to short events.</span><span>③ <b>Improve</b>Use the results to change one thing tomorrow.</span></div><p class="cr-note">1× takes about 4 minutes per day. At 2× or 3×, sales and delivery times speed up. Freshness changes only overnight. Pause whenever you need to plan. Pop-ups pause automatically.</p><p>The game saves in this browser. Tab switching pauses the shift. Closing the café screen keeps your campaign.</p>`,
-      btn('sound',game.sound?' Sound on · mute':' Sound off · enable')+btn('brief','Today’s mission')+btn('upgrades','Improve café')+btn('close','Back to café','cr-primary'));
+      btn('sound',game.sound?' Sound on · mute':' Sound off · enable')+btn('operations-plan','Required operations plan')+btn('export-learning','Download decision record')+btn('close','Back to café','cr-primary'));
   }
   function resumeSave() {
     const step=game.tutorialStep();
@@ -455,7 +495,8 @@
     if(game.phase==='review'){report();return;}
     if(game.phase==='planning') {
       if(game.tutorial.active){toast('Finish the highlighted tutorial steps, or choose Skip tutorial.',false);return;}
-      const message=game.open();if(message){error(message);return;}
+      if(!game.lesson.plan){operationsPlan();return;}
+      const message=game.open();if(message){dialog('opening-check','Before you open',`<p>${esc(message)}</p>`,btn('fix-opening','Show me where','cr-primary')+btn('close','Back to preparation'));return;}
       closeDialog(false);game.running=true;toast('Doors open! Keep the café stocked.');drawTab();
     } else {game.running=!game.running;}
     save();updateHUD();
@@ -485,7 +526,7 @@
     else if(a==='briefing-done'){closeDialog(false);drawTab();}
     else if(a==='resume-save')resumeSave();
     else if(a==='close')closeDialog();
-    else if(a==='tab'){tab=d.tab;const step=game.tutorialStep();if(tab==='stock'&&step==='stock')game.tutorial.stockOpened=true;if(tab==='supply'&&step==='suppliers')game.tutorial.suppliersOpened=true;if(tab==='menu'&&step==='menu')game.tutorial.menuSeen=true;if(tab==='trends'&&step==='trends')game.tutorial.trendsSeen=true;drawTab();}
+    else if(a==='tab'){tab=d.tab;game.observe('tab',tab);const step=game.tutorialStep();if(tab==='stock'&&step==='stock')game.tutorial.stockOpened=true;if(tab==='supply'&&step==='suppliers')game.tutorial.suppliersOpened=true;if(tab==='menu'&&step==='menu')game.tutorial.menuSeen=true;if(tab==='trends'&&step==='trends')game.tutorial.trendsSeen=true;drawTab();}
     else if(a==='category'){category=d.category;drawTab();}
     else if(a==='inspect')inspect(d.product);
     else if(a==='skip-guide'){game.skipTutorial();drawTab();}
@@ -499,7 +540,7 @@
     else if(a==='rotate'){game.rotate(inspected);closeDialog();toast(game.lastExplanation);}
     else if(a==='bin'){category='rescue';drawTab();toast('Drag an expired product here, or select it and use the bin button.');}
     else if(a==='order-selected'){selected=inspected;tab='supply';frozen=false;closeDialog();}
-    else if(a==='supplier'){supplier=d.supplier;if(!game.tutorial.compared.includes(supplier))game.tutorial.compared.push(supplier);drawTab();}
+    else if(a==='supplier'){supplier=d.supplier;game.observe('supplier',supplier);if(!game.tutorial.compared.includes(supplier))game.tutorial.compared.push(supplier);drawTab();}
     else if(a==='qty-down'||a==='qty-up'){qty=Math.max(1,Math.min(100,qty+(a==='qty-up'?1:-1)));drawTab();}
     else if(a==='pack'){frozen=d.frozen==='true';drawTab();}
     else if(a==='add-cart'){
@@ -555,6 +596,23 @@
     else if(a==='helper'){toast(game.hireHelper()?'Helper hired for today. Two customers can be prepared at once.':'Helper unavailable or not enough credit.',game.helper);drawTab();}
     else if(a==='reorder-cart'){tab='supply';addToCart(game.reorderPlan(supplier),true);}
     else if(a==='play')startShift();
+    else if(a==='operations-plan'){if(game.phase==='planning')operationsPlan();else toast('Planning is complete for this shift. Review the outcomes after closing.');}
+    else if(a==='fix-opening'){
+      closeDialog(false);
+      if(game.expiredCount()){tab='stock';category='rescue';}
+      else if(game.day===1&&!game.learning.events.some(e=>e.kind==='fifo')&&game.deliveries.some(d=>d.arrived&&!d.shelved)){deliveries();return;}
+      else if([3,4,5].includes(game.day)){tab='menu';menuSection=game.day===4?'bakery':'drinks';}
+      else {tab='supply';if(game.lesson.plan?.supplier)supplier=game.lesson.plan.supplier;}
+      drawTab();
+    }
+    else if(a==='save-plan')saveOperationsPlan();
+    else if(a==='plan-compare'){game.observe('supplier',d.supplier);operationsPlan();}
+    else if(a==='plan-trends'){tab='trends';game.observe('tab','trends');closeDialog();drawTab();toast('Inspect actual demand, then return to Required operations plan.');}
+    else if(a==='fifo-new'){game.learning.events.push({kind:'fifo-attempt',day:game.day,correct:false});error('New stock in front leaves older goods behind to expire. Choose older usable stock first.');}
+    else if(a==='fifo-old')finishDelivery(Number(d.delivery));
+    else if(a==='engineer-review')engineerReview();
+    else if(a==='save-review'){const problem=game.reflect($('#cr-review-answer').value,$('#cr-review-action').value);if(problem)error(problem);else report();}
+    else if(a==='export-learning'){const url=URL.createObjectURL(new Blob([JSON.stringify(game.learningRecord(),null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='cafe-rescue-decisions.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
     else if(a==='speed'){speed=Number(d.speed);updateHUD();toast(`${speed}× speed: sales and deliveries move ${speed===1?'at normal speed':`${speed} times faster`}.`);}
     else if(a==='brief')briefing();
     else if(a==='event-choice'){const problem=game.chooseEvent(d.choice);if(problem)error(problem);else{closeDialog();toast(game.lastExplanation);}}
@@ -576,6 +634,10 @@
     updateHUD();save();
   }
   function handleChange(e) {
+    if(e.target.id.startsWith('cr-plan-price-')) {
+      const id=e.target.id.replace('cr-plan-price-',''),node=$(`#cr-plan-margin-${id}`),value=Number(e.target.value);
+      if(node)node.textContent=Number.isFinite(value)?`Estimated profit per sale: ${money(value-game.unitCost(id))} before overhead`:'Enter a valid selling price.';
+    }
     if(e.target.id==='cr-servings') {
       const amount=Number(e.target.value);
       if(!Number.isInteger(amount)||amount<1||amount>100){error('Choose a whole serving target from 1 to 100.');return;}
