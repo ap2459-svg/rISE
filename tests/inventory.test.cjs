@@ -8,12 +8,11 @@ const line=(name,qty,supplier='quick',frozen=false,express=false)=>({name,qty,su
 const clear=g=>INVENTORY_ITEMS.forEach(i=>g.discard(i.name));
 function requiredPlan(g,style='balanced') {
   g.observe('tab','trends');g.observe('supplier','quick');g.observe('supplier','budget');
-  const buffer={buffer:g.day>=6?4:2,reorder:2};
-  const plans={1:{servings:8},2:{...buffer,supplier:style==='budget'?'budget':style==='premium'?'premium':'quick'},3:{...buffer,servings:8},4:{strategy:g.strategy},5:{prices:{latte:g.menu.latte.price,oat:g.menu.oat.price}},6:{...buffer,capacity:g.helper?'helper':'buffer',investment:'hold',reason:'cash'},7:{...buffer,servings:8,investment:'hold',reason:'cash'}};
-  if(style==='premium')g.observe('supplier','premium');
+  const buffer={buffer:3,reorder:3},capacity=g.helper?'helper':'buffer';
+  const plans={1:{servings:12,supplier:'quick'},2:{...buffer,servings:12},3:{...buffer,strategy:g.strategy,capacity,investment:'hold',reason:'cash'},4:{prices:{latte:g.menu.latte.price,oat:g.menu.oat.price}},5:{...buffer,servings:18,capacity,investment:'hold',reason:'cash'}};
   assert.equal(g.commitPlan(plans[g.day]),null);
 }
-function requiredReview(g) { assert.equal(g.reflect(g.reviewOptions().correct,'stock'),null); }
+function requiredReview(g) { assert.equal(g.reflect(g.reviewOptions().correct),null); }
 function shelve(g,fifo=true){g.deliveries.filter(d=>d.arrived&&!d.shelved).forEach(d=>g.shelve(d.id,fifo));}
 function waitPlanning(g){
   let limit=100;
@@ -139,7 +138,7 @@ function accounting(g){
 }
 // Pricing, one-off events, upgrades, saving in transit and at a paused decision.
 {
-  let g=new InventorySim(55);clear(g);g.day=5;
+  let g=new InventorySim(55);clear(g);g.day=4;
   assert(g.setPrice('latte',9));assert(g.priceAcceptance(MENU[0])<.5);
   assert(g.setPrice('latte',4));assert(g.priceAcceptance(MENU[0])>.95);
   assert.equal(g.setPrice('latte',100),false);
@@ -158,11 +157,11 @@ function accounting(g){
 }
 // Emergency choices are atomic; replaying the same popup cannot collect supplies twice.
 {
-  const g=new InventorySim(18);g.day=3;g.phase='shift';g.pendingEvent=g.eventData();
+  const g=new InventorySim(18);g.day=2;g.phase='shift';g.pendingEvent=g.eventData();
   const before=g.cash;assert.equal(g.chooseEvent('emergency'),null);
   near(g.cash,before-14,'emergency purchase');assert.equal(g.deliveries.length,1);accounting(g);
   assert(g.chooseEvent('emergency'));assert.equal(g.deliveries.length,1);
-  const poor=new InventorySim(18);poor.day=3;poor.phase='shift';poor.cash=-745;poor.pendingEvent=poor.eventData();
+  const poor=new InventorySim(18);poor.day=2;poor.phase='shift';poor.cash=-745;poor.pendingEvent=poor.eventData();
   assert(poor.chooseEvent('emergency'));assert.equal(poor.cash,-745);assert.equal(poor.deliveries.length,0);
   assert.equal(poor.chooseEvent('alternative'),null,'every emergency has a no-cash response');
 }
@@ -207,18 +206,8 @@ function accounting(g){
   const skip=new InventorySim(9),prior=skip.cash;skip.skipTutorial();assert.equal(skip.cash,prior);assert.equal(skip.tutorialStep(),null);assert(skip.open(),'skipping cannot bypass food safety');
   assert(InventorySim.restore(skip.save()).tutorial.skipped);
 }
-// Old saves retain their economy and convert dates without reviving expired stock.
-{
-  const old=new InventorySim(17);old.clock=90;old.tutorial={active:true,inspected:false,missing:false,compared:[],ordered:false,shelved:false,finished:false};
-  old.lots['Whole Milk'][0].expires=10;old.lots['Original Blend'][0].expires=1200;
-  const envelope=JSON.parse(old.save());envelope.version=2;
-  const migrated=InventorySim.restore(JSON.stringify(envelope));assert(migrated);
-  assert.equal(migrated.cash,old.cash);assert.equal(migrated.stock('Whole Milk'),0);
-  assert.equal(migrated.stock('Original Blend'),4);assert(migrated.lots['Original Blend'][0].expires>migrated.day);
-  assert.equal(migrated.tutorialStep(),'stock');assert.equal(JSON.parse(migrated.save()).version,CONFIG.version);
-  const v3=JSON.parse(new InventorySim(5).save());v3.version=3;delete v3.state.alerts;delete v3.state.metrics.stockLost;delete v3.state.metrics.stockLostRevenue;
-  const current=InventorySim.restore(JSON.stringify(v3));assert(current);assert.equal(current.cash,v3.state.cash);assert.equal(current.lossNotice(),null);
-}
+// Seven-day saves are not silently relabeled as five-day progress.
+{for(const version of [2,3,4,5]){const old=JSON.parse(new InventorySim(1).save());old.version=version;assert.equal(InventorySim.restore(JSON.stringify(old)),null);}assert(InventorySim.restore(new InventorySim(1).save()));}
 // Recipe targets allocate shared ingredients once; planning never purchases anything.
 {
   const g=new InventorySim(42);clear(g);g.day=2;
@@ -238,7 +227,7 @@ function accounting(g){
   for(const l of second.lines){const existing=merged.find(c=>c.name===l.name&&c.frozen===l.frozen);if(existing)existing.qty+=l.qty;else merged.push(l);}
   assert.equal(new Set(merged.map(l=>l.name)).size,merged.length);assert.equal(merged.find(l=>l.name==='Original Blend').qty,6);
   assert.equal(g.recipePlan({latte:5,caramel:5},merged).lines.length,0);
-  assert.equal(g.recipePlan({oat:5}),null,'locked products are not planned early');
+  assert.equal(new InventorySim(1).recipePlan({oat:5}),null,'locked products are not planned early');
   for(const n of [0,-1,2.5,NaN,101])assert.equal(g.recipePlan({latte:n}),null);
   const capped=g.recipePlan({latte:100});assert(capped.unfilled>0);
   for(const l of capped.lines)assert(l.qty+g.occupied(l.name)+g.incoming(l.name)<=g.capacity(l.name));
@@ -314,53 +303,37 @@ function accounting(g){
   }
 }
 
-// Required concepts cannot be skipped through tutorial skipping, reloads or direct progression.
+// Five required teaching days, actual decisions, and reflection attempts persist independently.
 {
-  const g=new InventorySim(4);g.skipTutorial();clear(g);g.briefed=true;
-  for(const name of MENU[0].recipe)g.addLot(name,8,.2,14);
-  assert.match(g.open(),/operations plan/);
-  assert(g.commitPlan({servings:0}));assert.equal(g.lesson.plan,null);
-  assert.equal(g.commitPlan({servings:8}),null);assert.match(g.open(),/older stock/);
-  g.placeOrder([line('Cup',1)]);waitPlanning(g);
-  const after=g.cash;assert(g.commitPlan({servings:20}));assert.equal(g.cash,after,'no repeat plan spending');
-  assert.equal(g.open(),null);g.finish();assert.equal(g.nextDay(),false);
-  assert(g.reflect('waste','stock'));assert.equal(g.lesson.attempts.length,1);assert.equal(g.lesson.review,null);
-  requiredReview(g);const restored=InventorySim.restore(g.save());assert(restored);assert(restored.lesson.review);
-  assert(restored.nextDay());assert.equal(restored.lesson.plan,null);
-  assert(restored.commitPlan({supplier:'quick',buffer:2,reorder:2}));
-  restored.observe('supplier','quick');restored.observe('supplier','budget');
-  const oldTarget=restored.suggested('Decaf');
-  assert.equal(restored.commitPlan({supplier:'quick',buffer:3,reorder:4}),null);
-  assert.match(restored.planProblem(),/Place an order/);
-  assert.equal(restored.placeOrder([line('Napkin',1)]),null);assert.equal(restored.planProblem(),null);
-  assert.equal(restored.safetyStock,3);assert.equal(restored.reorderPoint,4);
-  assert(restored.suggested('Decaf')>oldTarget,'chosen reorder point and safety stock affect actual purchasing recommendations');
-  const record=restored.learningRecord();assert.equal(record.days[1].attempts.length,2);assert(record.events.some(e=>e.kind==='fifo'));
-  record.events.length=0;assert(restored.learning.events.length,'export is an independent copy');
-  const legacy=JSON.parse(restored.save());legacy.version=4;delete legacy.state.learning;delete legacy.state.safetyStock;delete legacy.state.reorderPoint;
-  const migrated=InventorySim.restore(JSON.stringify(legacy));assert(migrated);assert(migrated.learning.days[1].plan.legacy);
+  assert.equal(CONFIG.days,5);assert.equal(CONFIG.shiftSeconds,75);assert.equal(RESCUE.DAYS.length,5);
+  const g=new InventorySim(4);clear(g);g.skipTutorial();g.briefed=true;
+  for(const n of MENU[0].recipe)g.addLot(n,8,.2,14);
+  assert(g.open());assert(g.commitPlan({servings:8,supplier:'quick'}));
+  g.observe('supplier','quick');g.observe('supplier','budget');assert.equal(g.commitPlan({servings:8,supplier:'quick'}),null);
+  assert.match(g.planProblem(),/Unpack/);g.placeOrder([line('Cup',1)]);waitPlanning(g);assert.equal(g.open(),null);
+  g.tick(30);assert(g.pendingEvent,'event occurs inside the shortened shift');assert.equal(g.elapsed,30);
+  assert.equal(g.chooseEvent('steady'),null);g.tick(75);assert.equal(g.phase,'review');assert.equal(g.nextDay(),false);
+  const q=g.reviewOptions();assert.equal(q.options.length,3);const bad=q.options.find(o=>o[0]!==q.correct)[0],cash=g.cash,rating=g.rating;
+  assert(g.reflect(bad));assert.equal(g.cash,cash);assert.equal(g.rating,rating);assert.equal(g.lesson.review,null);
+  let restored=InventorySim.restore(g.save());assert.equal(restored.lesson.attempts.length,1);requiredReview(restored);
+  assert.equal(restored.lesson.review.firstCorrect,false);assert.equal(restored.lesson.review.attempts,2);
+  assert(restored.reflect(q.correct),'no repeated rewards');assert(restored.nextDay());assert.equal(restored.day,2);
+  assert(restored.commitPlan({servings:12,buffer:3,reorder:3}));restored.observe('tab','trends');assert.equal(restored.commitPlan({servings:12,buffer:3,reorder:3}),null);
+  assert.match(restored.planProblem(),/Cold Brew/);
+  const record=restored.learningRecord();assert.equal(record.curriculum.length,5);record.events.length=0;assert(restored.learning.events.length);
 }
 {
-  const g=new InventorySim(6);g.day=3;assert(g.commitPlan({servings:8,buffer:2,reorder:2}));
-  g.observe('tab','trends');assert.equal(g.commitPlan({servings:8,buffer:2,reorder:2}),null);
-  assert.match(g.planProblem(),/Cold Brew/,'forecast must be tested with a real menu item');
-  g.day=4;assert(g.commitPlan({strategy:'wrong'}));assert.equal(g.commitPlan({strategy:'hybrid'}),null);assert(g.strategyChosen);
-  assert.match(g.planProblem(),/bakery/,'make-or-buy requires stocked bakery on menu');
-  g.day=5;assert(g.commitPlan({prices:{latte:6}}));const before=JSON.stringify(g.menu);
-  assert(g.commitPlan({prices:{latte:6,oat:999}}));assert.equal(JSON.stringify(g.menu),before,'invalid pricing is atomic');
-  assert.equal(g.commitPlan({prices:{latte:6.25,oat:7}}),null);assert.equal(g.menu.latte.price,6.25);
-  assert.match(g.planProblem(),/priced/,'prices must apply to a drink actually offered');
-  g.day=6;g.cash=-740;const cash=g.cash;
-  assert(g.commitPlan({capacity:'helper',buffer:2,reorder:2,investment:'fridge',reason:'waste'}));assert.equal(g.cash,cash);assert(!g.helper);
-  assert.equal(g.commitPlan({capacity:'focus',buffer:2,reorder:2,investment:'hold',reason:'cash'}),null);
-  assert.equal(MENU.filter(p=>p.kind==='drink'&&g.menu[p.id].enabled).length,1,'focus changes real menu');
-  g.day=7;g.observe('tab','trends');assert.equal(g.commitPlan({servings:8,buffer:1,reorder:3,investment:'hold',reason:'cash'}),null);
-  g.phase='shift';g.finish();assert.equal(g.ending(),null);requiredReview(g);assert(g.ending());
-  const helper=new InventorySim(7);helper.day=6;const start=helper.cash;
-  assert.equal(helper.commitPlan({capacity:'helper',buffer:2,reorder:2,investment:'energy',reason:'capacity'}),null);
-  assert(helper.helper);assert(helper.upgrades.includes('energy'));near(start-helper.cash,60,'helper and investment charged exactly once');
-  const saved=helper.cash;assert(helper.commitPlan({capacity:'helper',buffer:2,reorder:2,investment:'energy',reason:'capacity'}));assert.equal(helper.cash,saved);
-  assert.equal(InventorySim.restore(helper.save()).safetyStock,2);
+  const g=new InventorySim(1);g.day=3;
+  const plan={strategy:'hybrid',capacity:'helper',investment:'fridge',reason:'waste',buffer:3,reorder:3};
+  g.cash=-740;assert(g.commitPlan(plan));assert.equal(g.cash,-740);assert(!g.helper);
+  g.cash=-500;assert.equal(g.commitPlan(plan),null);assert(g.helper);assert(g.upgrades.includes('fridge'));near(g.cash,-567,'combined investment charged once');
+  assert(g.commitPlan(plan));assert.equal(g.cash,-567);g.day=4;
+  assert(g.commitPlan({prices:{latte:6,oat:999}}));assert.equal(g.commitPlan({prices:{latte:6.25,oat:7}}),null);assert.equal(g.menu.latte.price,6.25);
+  for(let day=1;day<=5;day++){
+    const r=new InventorySim(day);r.day=day;r.phase='shift';r.metrics.served=3;r.metrics.revenue=20;r.metrics.lostSales=7;r.finish();
+    const q=r.reviewOptions();assert.equal(q.options.length,3);assert(q.topic);requiredReview(r);assert(r.lesson.review.firstCorrect);
+    assert.equal(InventorySim.restore(r.save()).lesson.review.answer,q.correct);
+  }
 }
 // A public-information player: small batches, periodic observed-stock checks, no future schedule.
 function campaign(seed,style='balanced',saveMidway=false){
@@ -373,7 +346,7 @@ function campaign(seed,style='balanced',saveMidway=false){
       const i=INVENTORY_ITEMS.find(i=>i.name===name),bakery=i.group==='bakery';
       const isFrozen=bakery&&g.strategy==='inhouse';
       const have=g.stock(name)+g.frozen(name)+g.incoming(name);
-      const threshold=bakery?3:Math.max(4,Math.ceil(g.rate(name)*55));
+      const threshold=bakery?3:Math.max(4,Math.ceil(g.rate(name)*16));
       let target=bakery?(isFrozen?8:6):i.group==='supplies'?26:14;
       if(style==='hoard')target=g.capacity(name);
       if(!planning&&have>threshold&&style!=='hoard')continue;
@@ -387,29 +360,29 @@ function campaign(seed,style='balanced',saveMidway=false){
     if(g.strategy==='outsource')return;
     for(const p of MENU.filter(p=>p.kind==='bakery'&&g.menu[p.id].enabled))if(g.stock(p.name)<=3&&g.frozen(p.name)>=4)g.bake(p.name);
   };
-  for(let day=1;day<=7;day++){
+  for(let day=1;day<=CONFIG.days;day++){
     if(seed===11&&style==='balanced'&&[2,3,4,5,6,7].includes(day))fixtures[`day-${day}`]=g.save();
     assert.equal(g.day,day);g.briefed=true;clear(g);
     g.setStrategy(style==='inhouse'?'inhouse':'outsource');
-    if(style==='overprice'&&day>=5) for(const p of MENU)if(p.day<=day)g.setPrice(p.id,Math.floor(p.price*1.75*4)/4);
-    if(style==='balanced'&&day===3)g.buyUpgrade('fridge');
+    if(style==='overprice'&&day>=4) for(const p of MENU)if(p.day<=day)g.setPrice(p.id,Math.floor(p.price*1.75*4)/4);
+    if(style==='balanced'&&day===2)g.buyUpgrade('fridge');
     if(style==='premium'&&day===4)g.buyUpgrade('ordering');
-    if(day>=6&&style==='inhouse')g.hireHelper();
+    if(day>=3&&style==='inhouse')g.hireHelper();
     stockUp(true);waitPlanning(g);bake();waitPlanning(g);clear(g);
     requiredPlan(g,style);
     const opening=g.open();
     if(opening) return {seed,style,blocked:opening,day,cash:g.cash};
     for(let second=0;g.phase==='shift'&&second<1000;second++){
       if(g.pendingEvent){
-        if(seed===11&&style==='balanced'&&day===6)fixtures.rush=g.save();
+        if(seed===11&&style==='balanced'&&day===5)fixtures.rush=g.save();
         const choices=g.pendingEvent.choices.map(c=>c[0]);
         const choice=choices.includes('steady')?'steady':choices.includes('repair')&&style==='inhouse'?'repair':choices.includes('outsource')?'outsource':choices.includes('quality')?'quality':choices.includes('alternative')?'alternative':choices[0];
         assert.equal(g.chooseEvent(choice),null);g.running=true;
       }
       shelve(g);bake();
-      if(second%10===0&&g.elapsed<CONFIG.shiftSeconds-45)stockUp();
+      if(second%3===0&&g.elapsed<CONFIG.shiftSeconds-12)stockUp();
       g.tick(1);accounting(g);
-      if(saveMidway&&day===4&&second===130){
+      if(saveMidway&&day===4&&second===35){
         const copy=InventorySim.restore(g.save());assert(copy);g=copy;g.running=true;
       }
     }
@@ -421,10 +394,10 @@ function campaign(seed,style='balanced',saveMidway=false){
     accounting(g);assert.equal(g.finish(),false,'cannot collect result twice');
     if(seed===11&&style==='balanced')fixtures[`review-${day}`]=g.save();
     requiredReview(g);
-    if(day<7)assert(g.nextDay());
+    if(day<CONFIG.days)assert(g.nextDay());
   }
-  const end=g.ending();assert(end);assert.equal(g.reports.length,7);
-  assert(g.learningRecord().curriculum.every(c=>c.completed),'every campaign requires all seven concept groups');
+  const end=g.ending();assert(end);assert.equal(g.reports.length,5);
+  assert(g.learningRecord().curriculum.every(c=>c.completed),'every campaign requires all five concept groups');
   if(seed===11&&style==='balanced')fixtures.ending=g.save();
   if(seed===11&&style==='overprice')fixtures.failure=g.save();
   return {seed,style,tier:end.tier,balance:Math.round(end.balance),service:Math.round(end.service*100),reputation:end.reputation,waste:Math.round(end.waste),daily};
@@ -436,7 +409,7 @@ console.table(results.map(({daily,...r})=>r));
 if(process.env.RESCUE_VERBOSE)console.log(JSON.stringify(results,null,2));
 for(const style of ['balanced','premium','inhouse']){
   const runs=results.filter(r=>r.style===style);
-  assert(runs.every(r=>!r.blocked),`${style} can play all seven days`);
+  assert(runs.every(r=>!r.blocked),`${style} can play all five days`);
   assert(runs.some(r=>['gold','silver','bronze'].includes(r.tier)),`${style} offers a viable rescue strategy`);
 }
 assert(results.filter(r=>r.style==='balanced').some(r=>['gold','silver'].includes(r.tier)),'good play can clear inherited debt');
@@ -444,12 +417,12 @@ const regular=results.filter(r=>r.style==='balanced').reduce((s,r)=>s+r.balance,
 const excess=results.filter(r=>r.style==='hoard').reduce((s,r)=>s+(r.balance||-750),0);
 assert(regular>excess,'filling every shelf should be worse than measured purchasing');
 assert(results.some(r=>r.tier==='failure'||r.blocked),'success is not guaranteed');
-console.log('PASS: inventory safety, FIFO, supplier risk, pricing, production, finance, persistence, and 18 seven-day campaigns.');
+console.log('PASS: inventory safety, FIFO, supplier risk, pricing, production, finance, persistence, and 18 five-day campaigns.');
 if(process.argv.includes('--fixtures')){
   const fs=require('node:fs'),path=require('node:path');
   const html=fs.readFileSync(path.join(__dirname,'../dist/index.html'),'utf8');
   for(const [name,save] of Object.entries(fixtures)){
-    const loader=`<script>if(location.port!=='8789')throw new Error('Use the isolated QA preview port 8789');localStorage.setItem('rise.cafe-rescue.v2',${JSON.stringify(save).replace(/</g,'\\u003c')});</script>`;
+    const loader=`<script>if(location.port!=='8789')throw new Error('Use the isolated QA preview port 8789');localStorage.setItem('rise.cafe-rescue.five-day.v1',${JSON.stringify(save).replace(/</g,'\\u003c')});</script>`;
     fs.writeFileSync(path.join(__dirname,`.rescue-qa-${name}.html`),html.replace('<head>','<head><base href="/dist/">').replace('<script src="engine.js">',loader+'<script src="engine.js">'));
   }
   console.log('Generated isolated browser fixtures in tests/.rescue-qa-*.html. Serve on port 8789 only.');
