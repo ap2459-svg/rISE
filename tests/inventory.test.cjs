@@ -83,14 +83,26 @@ function accounting(g){
     budgetBad+=a.deliveries[0].delayed||a.deliveries[0].error?1:0;
     premiumBad+=b.deliveries[0].delayed||b.deliveries[0].error?1:0;
   }
-  assert(budgetBad>40&&budgetBad>premiumBad*5,`risk frequency ${budgetBad}/${premiumBad}`);
+  assert(budgetBad>40&&budgetBad>premiumBad*1.5,`risk frequency ${budgetBad}/${premiumBad}`);
   const g=new InventorySim(4);g.day=2;
   assert(g.offer('Whole Milk','budget').unit<g.offer('Whole Milk','premium').unit);
-  assert(g.offer('Whole Milk','budget').life<g.offer('Whole Milk','premium').life);
+  assert(g.offer('Original Blend','budget').life<g.offer('Original Blend','premium').life);
   assert(g.offer('Cup','quick',20).unit<g.offer('Cup','quick',2).unit);
   assert(g.offer('Cup','quick',2,false,true).lead<g.offer('Cup','quick',2).lead);
 }
 // Delivery faults respect their promised time; shortages are refunded without extra expenses.
+{
+  const g=new InventorySim(21);
+  assert.equal(RESCUE.SUPPLIERS.filter(s=>s.unlock<=1).length,3,'three opening-day supplier choices');
+  const budget=g.offer('Original Blend','budget'),middle=g.offer('Original Blend','premium'),quick=g.offer('Original Blend','quick');
+  for(const field of ['unit','quality','reliability','life'])assert(budget[field]<middle[field]&&middle[field]<quick[field],`middle supplier ${field} sits between alternatives`);
+  assert.equal(middle.dayOffset,0);assert(middle.lead>quick.lead);assert(middle.lead<CONFIG.shiftSeconds);
+  assert.equal(g.placeOrder([line('Cup',5,'premium')]),null);
+  const d=g.deliveries[0];assert.equal(d.dueDay,1);assert.equal(d.expected,10);
+  g.clock=d.expected-1;g.processDeliveries();assert.equal(d.arrived,false);
+  g.clock=d.eta;g.processDeliveries();assert(d.arrived);assert(g.shelve(d.id));assert(g.stock('Cup')>0);
+  assert(InventorySim.restore(g.save()),'new supplier orders survive save/resume');
+}
 {
   let late,short;
   for(let seed=1;seed<500&&(!late||!short);seed++){

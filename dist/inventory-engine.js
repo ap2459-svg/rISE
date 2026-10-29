@@ -26,7 +26,8 @@
   const SUPPLIERS=[
     {id:'budget',name:'Budget Beans & Basics',icon:'budget',color:'#a36b30',multiplier:.72,lead:4,nextDay:true,reliability:.78,quality:.76,life:.7,bulk:12,discount:.12,unlock:1,note:'Lowest cost. Standard orders arrive tomorrow; more risk.'},
     {id:'quick',name:'QuickShip Co-op',icon:'truck',color:'#277565',multiplier:1,lead:5,reliability:.96,quality:.94,life:1,bulk:18,discount:.06,unlock:1,note:'Fast, dependable, small orders welcome.'},
-    {id:'premium',name:'Sunrise Select',icon:'sun',color:'#8b5e94',multiplier:1.3,lead:7,reliability:.995,quality:1,life:1.5,bulk:16,discount:.1,unlock:2,note:'Longer freshness and happier customers.'}
+    // Keep the existing supplier ID so saved orders and contracts remain compatible.
+    {id:'premium',name:'Neighborhood Supply',icon:'shop',color:'#477ca6',multiplier:.86,lead:10,reliability:.90,quality:.86,life:.85,bulk:16,discount:.08,unlock:1,note:'Middle price and quality. Same-day delivery takes longer than QuickShip; 90% reliable.'}
   ];
   const MENU=[
     {id:'latte',name:'Vanilla Latte',icon:'coffee',price:6,day:1,kind:'drink',recipe:['Original Blend','Whole Milk','Vanilla','Cup','Lid','Napkin']},
