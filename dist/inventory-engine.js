@@ -51,7 +51,7 @@
   const UPGRADES=[
     {id:'fridge',name:'Better refrigerator',icon:'fridge',cost:45,day:2,effect:'New milk and fresh bakery last 50% longer.'},
     {id:'storage',name:'Organized shelving',icon:'shelf',cost:30,day:2,effect:'50% more storage; easier FIFO rotation.'},
-    {id:'tracker',name:'Stockroom Assistant',icon:'trend',cost:18,day:1,effect:'One-time unlock: draft all out-of-stock active-menu supplies together, plus low-stock alerts. Goods and shipping cost extra.'},
+    {id:'tracker',name:'Stockroom Assistant',icon:'trend',cost:18,day:1,effect:'One-time unlock: urgent express auto-purchases for empty menu supplies, plus low-stock alerts. Goods and express fees cost extra.'},
     {id:'contract',name:'Supplier partnership',icon:'contract',cost:38,day:2,effect:'+10 points supplier reliability, up to 100%.'},
     {id:'oven',name:'Second bakery rack',icon:'oven',cost:48,day:3,effect:'Two batches at once; baking takes 5 seconds.'},
     {id:'ordering',name:'Combined ordering',icon:'menu',cost:26,day:3,effect:'Half the shipping fees; 5 seconds off lead times.'},
@@ -231,7 +231,8 @@
     }
     addLot(name,qty,cost,life,frozen=false,quality=.94,expires=null,received=null) {
       if(!BY_NAME[name]||!Number.isInteger(qty)||qty<=0||!Number.isFinite(cost)||cost<0||!Number.isFinite(life)||life<0) return;
-      this.lots[name].push({id:++this.serial,qty,cost,quality,received:received??this.clock,expires:expires??this.day+Math.max(1,Math.ceil(life)),frozen,written:false});
+      const date=expires??this.day+Math.max(1,Math.ceil(life)),supplierManaged=this.strategy==='outsource'&&BY_NAME[name].group==='bakery'&&!frozen&&date>this.day;
+      this.lots[name].push({id:++this.serial,qty,cost,quality,received:received??this.clock,expires:supplierManaged?this.day+100000000:date,frozen,written:false,supplierManaged});
     }
     markExpired() {
       const lots=[...Object.entries(this.lots).flatMap(([name,list])=>list.map(l=>({name,lot:l}))),
@@ -353,7 +354,7 @@
         for(const l of d.lines) l.expires=this.day+l.life;
         this.say(`Supplies arrived from ${d.name}! Place older products in front.`);
       }
-      this.collectRoutineDeliveries();
+      this.manageOutsourcedBakery();this.collectRoutineDeliveries();
     }
     collectRoutineDeliveries() {
       if(!this.learning.events.some(e=>e.kind==='fifo'))return;
@@ -363,7 +364,7 @@
       const d=this.deliveries.find(d=>d.id===id); if(!d||!d.arrived||d.shelved) return false;
       this.markExpired();
       for(const l of d.lines) {
-        this.lots[l.name].push({id:++this.serial,qty:l.qty,cost:l.cost,quality:l.quality,received:d.eta,expires:l.expires,frozen:l.frozen,written:l.written});
+        this.lots[l.name].push({id:++this.serial,qty:l.qty,cost:l.cost,quality:l.quality,received:d.eta,expires:l.expires,frozen:l.frozen,written:l.written,supplierManaged:!!l.supplierManaged});
         this.lots[l.name].sort((a,b)=>((a.received??0)-(b.received??0)||a.id-b.id));
       }
       d.shelved=true; this.tutorial.shelved=true;
@@ -409,7 +410,7 @@
     activeIngredients() { return [...new Set(MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled).flatMap(p=>p.recipe))]; }
     // Targets are total servings in this shopping plan, not repeated additions.
     // Shared stock is allocated once across all recipes; manual cart choices remain intact.
-    recipePlan(targets,cart=[],supplier='quick',express=false) {
+    recipePlan(targets,cart=[],supplier='quick',express=false,discardExpired=false) {
       if(!targets||!Array.isArray(cart)||!this.supplier(supplier))return null;
       const needs={};
       for(const [id,servings] of Object.entries(targets)) {
@@ -427,7 +428,7 @@
         const frozenCoverage=Math.floor(frozenTotal/CONFIG.bakeBatch)*CONFIG.bakeBatch;
         const shortage=Math.max(0,required-ready-incoming-baking-cartReady-frozenCoverage);
         const wanted=frozen&&shortage?Math.ceil(Math.max(0,required-ready-incoming-baking-cartReady)/CONFIG.bakeBatch)*CONFIG.bakeBatch-frozenTotal:shortage;
-        const space=Math.max(0,this.capacity(name)-this.occupied(name)-this.incoming(name)-sum(cart.filter(l=>l.name===name).map(l=>l.qty)));
+        const space=Math.max(0,this.capacity(name)-this.occupied(name)+(discardExpired?this.spoiled(name):0)-this.incoming(name)-sum(cart.filter(l=>l.name===name).map(l=>l.qty)));
         const qty=Math.min(space,wanted);
         // Reuse the chosen company for a shared ingredient already in the cart.
         const existing=cart.find(l=>l.name===name&&!!l.frozen===frozen);
@@ -450,16 +451,37 @@
     reorderPlan(supplier='quick') {
       return this.activeIngredients().map(name=>({name,qty:this.suggested(name),supplier,frozen:BY_NAME[name].group==='bakery'&&this.strategy==='inhouse',express:false})).filter(l=>l.qty>0);
     }
-    bulkStockoutPlan(cart=[],supplier='quick',size=8,express=false) {
+    bulkStockoutPlan(cart=[],supplier='quick',size=8,express=false,discardExpired=false) {
       if(!this.upgrades.includes('tracker')||!['planning','shift'].includes(this.phase)||!Number.isInteger(size)||size<1||size>40)return null;
       const targets=Object.fromEntries(MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled).map(p=>[p.id,p.kind==='bakery'?Math.max(2,Math.floor(size*.25)):size]));
-      const plan=this.recipePlan(targets,cart,supplier,express);if(!plan)return null;
+      const plan=this.recipePlan(targets,cart,supplier,express,discardExpired);if(!plan)return null;
       const empty=new Set(plan.rows.filter(r=>r.stock===0).map(r=>r.name));
       const lines=plan.lines.filter(l=>empty.has(l.name)),combined=cart.map(l=>({...l}));
       for(const l of lines){const existing=combined.find(c=>c.name===l.name&&!!c.frozen===!!l.frozen);if(existing)existing.qty+=l.qty;else combined.push({...l});}
       return {lines,quote:this.quote(combined),unfilled:sum(plan.rows.filter(r=>empty.has(r.name)).map(r=>r.unfilled)),blocked:plan.blocked};
     }
     /* Menu, production and finance. Conversion costs stay in inventory until sold. */
+    urgentStockoutPlan(size=8) {
+      const fastest=SUPPLIERS.filter(s=>s.unlock<=this.day).map(s=>({s,o:this.offer('Cup',s.id,1,false,true)})).sort((a,b)=>a.o.lead-b.o.lead||b.o.reliability-a.o.reliability)[0];
+      const plan=this.bulkStockoutPlan([],fastest.s.id,size,true,true);if(!plan)return null;
+      const standard=this.quote(plan.lines.map(l=>({...l,express:false})));
+      return {...plan,supplier:fastest.s,lead:fastest.o.lead,extraShipping:plan.quote&&standard?plan.quote.shipping-standard.shipping:0};
+    }
+    urgentRestock(cart=[],acknowledge=false,size=8) {
+      if(!Array.isArray(cart)||(cart.length&&!this.quote(cart)))return {error:'Review invalid cart quantities before using urgent restock.'};
+      const plan=this.urgentStockoutPlan(size);
+      if(!plan)return {error:'Unlock the Stockroom Assistant and order during preparation or a shift.'};
+      if(!plan.lines.length)return {error:'No urgent order is needed. Usable stock and arriving deliveries already cover empty menu supplies.'};
+      if(plan.blocked||plan.unfilled)return {error:plan.blocked||'Not enough storage for a full urgent order. Free space or order smaller quantities manually.'};
+      if(!this.tutorial.urgentRestockExplained&&!acknowledge)return {error:'Review the express-delivery explanation before the first urgent purchase.'};
+      if(plan.quote.total>this.spendable)return {error:'Not enough cash or credit for this urgent order. Reduce quantities with manual ordering.'};
+      for(const l of plan.lines)if(this.spoiled(l.name))this.discard(l.name);
+      const error=this.placeOrder(plan.lines);if(error)return {error};
+      this.tutorial.urgentRestockExplained=true;
+      const remainingCart=cart.map(l=>({...l}));
+      for(const l of plan.lines){let purchased=l.qty;for(const c of remainingCart.filter(c=>c.name===l.name&&!!c.frozen===!!l.frozen)){const take=Math.min(c.qty,purchased);c.qty-=take;purchased-=take;}}
+      return {plan,cart:remainingCart.filter(l=>l.qty>0)};
+    }
     unitCost(id) {
       const p=MENU.find(p=>p.id===id); if(!p) return 0;
       return sum(p.recipe.map(name=>{
@@ -480,7 +502,28 @@
     }
     setStrategy(strategy) {
       if(!['inhouse','outsource','hybrid'].includes(strategy)||!['planning','shift'].includes(this.phase)) return false;
-      this.strategy=strategy; this.strategyChosen=true; this.earn('strategy','Make or buy?'); return true;
+      this.strategy=strategy;this.manageOutsourcedBakery(); this.strategyChosen=true; this.earn('strategy','Make or buy?'); return true;
+    }
+    manageOutsourcedBakery() {
+      if(this.strategy!=='outsource')return;
+      const active=['planning','shift'].includes(this.phase);
+      const cover=l=>{if(!l.frozen&&!l.written&&l.expires>this.day){l.supplierManaged=true;l.expires=this.day+100000000;}};
+      for(const i of ITEMS.filter(i=>i.group==='bakery')) {
+        if(active)this.discard(i.name);
+        for(const l of this.lots[i.name]) {
+          if(active&&l.frozen&&!l.written&&l.expires>this.day){const value=l.qty*l.cost;this.cash+=value;this.metrics.refunds+=value;this.metrics.purchases-=value;l.qty=0;}
+          else cover(l);
+        }
+        this.lots[i.name]=this.lots[i.name].filter(l=>l.qty>0);
+      }
+      for(const d of this.deliveries.filter(d=>!d.shelved&&!d.cancelled)) {
+        for(const l of d.lines.filter(l=>BY_NAME[l.name].group==='bakery')) {
+          if(active&&l.frozen){if(!l.written&&(!d.arrived||l.expires>this.day)){const value=l.qty*l.cost;this.cash+=value;this.metrics.refunds+=value;this.metrics.purchases-=value;}l.qty=0;}
+          else if(!d.arrived){l.supplierManaged=true;l.life=100000000;}
+          else cover(l);
+        }
+        d.lines=d.lines.filter(l=>l.qty>0);if(!d.lines.length){d.cancelled=true;d.shelved=true;}
+      }
     }
     bake(name) {
       if(!['planning','shift'].includes(this.phase)||BY_NAME[name]?.group!=='bakery') return 'Choose a pastry during planning or a shift.';
@@ -639,6 +682,7 @@
         rush:{title:'The festival crowd is here!',text:'Keep the system moving. An express buffer costs money; a focused menu reduces complexity.',choices:[['emergency','Express oat kit · $14','8 oat milk, 8 cold brew, 8 straws; 2s.'],['alternative','Promote Vanilla Latte','Use a different set of ingredients.'],['focus','Focus the drink menu','Offer only your best-stocked drink.']]},
         final:{title:'The neighborhood is watching',text:'The landlord arrives tonight. Invite a few more neighbors, or focus on serving the people already here.',choices:[['invite','Community invite · $10','More traffic for the rest of the shift.'],['steady','Make every order count','Keep the current pace.']]}
       };
+      if(kind==='oven'&&this.strategy==='outsource')return {kind,title:'Your bakery partner has production covered',text:'Baking and freshness are handled by your bakery. Which products should the café feature?',choices:[['promote','Feature coffee','More latte requests; keep milk and cups stocked.'],['bakery-promo','Feature pastries','More bakery add-ons; watch ready stock and bags.']]};
       return {...data[kind],kind};
     }
     chooseEvent(choice) {
@@ -659,6 +703,7 @@
       if(choice==='invite'&&!this.spendOperating(10)) return 'Not enough available credit for an invitation.';
       if(choice==='promote') { this.promotion='latte'; this.lastExplanation='A coffee special brings more drink requests. Check milk and cups before promising more than you can serve.'; }
       if(choice==='deal') this.discount=true;
+      if(choice==='bakery-promo'){this.promotion='cookie';this.lastExplanation='Outsourcing frees production capacity and removes freshness work, but pastry stock, bags and purchasing costs still matter.';}
       if(choice==='alternative') {
         this.promotion='latte'; this.menu.latte.enabled=true; this.menu.oat.enabled=false;
         this.substituteWaiting('oat','latte');
@@ -670,7 +715,7 @@
         for(const p of MENU.filter(p=>p.kind==='drink')) this.menu[p.id].enabled=p.id===best.id;
         this.lastExplanation='A focused menu needs fewer ingredients. Some customers will miss the variety.';
       }
-      if(choice==='outsource') { this.strategy='outsource'; this.ovenBroken=true; }
+      if(choice==='outsource') { this.setStrategy('outsource'); this.ovenBroken=true; }
       if(choice==='hybrid') { this.strategy='hybrid'; this.ovenBroken=false; this.slowOven=true; }
       if(choice==='repair') { this.ovenBroken=false; this.slowOven=false; }
       if(choice==='value') this.menu.latte.price=Math.round(MENU[0].price*.9*4)/4;
@@ -820,7 +865,7 @@
         for(const key of Object.keys(game)) if(Object.hasOwn(s,key)) game[key]=s[key];
         game.tutorial={...new InventorySim(1).tutorial,...s.tutorial};
         if(envelope.version===2){if(game.phase!=='planning')game.tutorial.active=false;if(game.pendingEvent)game.pendingEvent=game.eventData();}
-        game.running=false; return game;
+        game.manageOutsourcedBakery();game.running=false; return game;
       } catch { return null; }
     }
   }

@@ -64,6 +64,42 @@ function accounting(g){
 }
 // Calendar freshness does not decrease with seconds, speed, or planning waits.
 {
+  const g=new InventorySim(21);clear(g);
+  assert.equal(g.placeOrder([line('Cookie',4,'quick',true)]),null);waitPlanning(g);
+  const before=g.cash,value=g.frozen('Cookie')*.9*.48;
+  g.setStrategy('outsource');near(g.cash,before+value,'unused frozen portions returned at cost');assert.equal(g.frozen('Cookie'),0);accounting(g);
+  assert(g.bake('Cookie'),'outsourcing never requires the oven');
+  assert.equal(g.placeOrder([line('Cookie',8),line('Whole Milk',3)]),null);waitPlanning(g);
+  assert(g.lots.Cookie.every(l=>l.supplierManaged));
+  const copy=InventorySim.restore(g.save());assert(copy.lots.Cookie.every(l=>l.supplierManaged));
+  copy.day=5;copy.markExpired();assert.equal(copy.stock('Cookie'),8,'outsourced bakery freshness remains supplier-managed');
+  assert.equal(copy.stock('Whole Milk'),0,'other ingredients still expire normally');
+  assert(!copy.expiringItems().some(i=>i.name==='Cookie'));assert.equal(copy.metrics.wasteByItem.Cookie||0,0);
+  copy.day=3;assert(!copy.eventData().title.includes('oven'),'outsourced shift removes the oven emergency');
+  const pending=new InventorySim(2);clear(pending);pending.placeOrder([line('Cookie',4,'quick',true)]);pending.setStrategy('outsource');
+  assert(pending.deliveries[0].cancelled);pending.tickPlanning(30);assert.equal(pending.frozen('Cookie'),0);accounting(pending);
+  const old=new InventorySim(21);clear(old);old.placeOrder([line('Cookie',2)]);waitPlanning(old);old.day=3;
+  old.setStrategy('outsource');assert.equal(old.stock('Cookie'),0,'expired goods are discarded, never revived');assert(old.metrics.waste>0);assert.equal(old.spoiled('Cookie'),0);
+}
+{
+  const g=new InventorySim(21);clear(g);g.buyUpgrade('tracker');g.placeOrder([line('Whole Milk',40)]);waitPlanning(g);
+  assert.equal(g.stock('Whole Milk'),40);g.day=4;g.markExpired();const wasted=g.metrics.waste,before=g.cash;
+  const preview=g.urgentStockoutPlan();assert.equal(preview.supplier.id,'quick');assert(preview.lines.every(l=>l.express));assert(preview.extraShipping>0);
+  assert.equal(preview.lines.find(l=>l.name==='Whole Milk').qty,8,'expired lots can be cleared to make shelf space');
+  assert(g.urgentRestock().error,'first use requires the explanation');assert.equal(g.cash,before);assert.equal(g.spoiled('Whole Milk'),40);
+  const cart=[line('Whole Milk',8),line('Napkin',3)],result=g.urgentRestock(cart,true);assert(!result.error);
+  near(g.cash,before-preview.quote.total,'express purchase spends the quoted total once');assert.equal(g.spoiled('Whole Milk'),0);near(g.metrics.waste,wasted,'discard does not write off spoiled goods twice');
+  assert.deepEqual(result.cart,[line('Napkin',3)],'only purchased quantities are removed from the cart');
+  assert.equal(g.stock('Whole Milk'),0,'urgent stock still travels through delivery');
+  const count=g.deliveries.length,cash=g.cash;assert(g.urgentRestock().error);assert.equal(g.deliveries.length,count);assert.equal(g.cash,cash,'incoming coverage prevents repeated purchases');
+  waitPlanning(g);const restored=InventorySim.restore(g.save());assert(restored.tutorial.urgentRestockExplained);
+  for(const l of [...restored.lots['Whole Milk']])restored.discard('Whole Milk',l.id);
+  restored.tutorial.active=false;restored.introSeen=true;restored.briefed=true;fixtures['urgent-repeat']=restored.save();
+  assert(!restored.urgentRestock().error,'later uses purchase directly without the first-use dialog');accounting(restored);
+  const poor=new InventorySim(4);clear(poor);poor.buyUpgrade('tracker');poor.cash=-749;const snapshot=poor.save();
+  assert(poor.urgentRestock([],true).error);assert.equal(poor.save(),snapshot,'failed funding does not remove stock or acknowledge the explanation');
+}
+{
   const g=new InventorySim(31);clear(g);
   assert.equal(g.bulkStockoutPlan(),null,'bulk assistant must be unlocked');
   const initial=g.cash;assert(g.buyUpgrade('tracker'));near(g.cash,initial-18,'one-time assistant cost');
