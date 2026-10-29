@@ -64,6 +64,43 @@ function accounting(g){
 }
 // Calendar freshness does not decrease with seconds, speed, or planning waits.
 {
+  const g=new InventorySim(21);clear(g);g.placeOrder([line('Cup',1)]);waitPlanning(g);
+  g.day=2;g.beginDay();g.skipTutorial();g.briefed=true;g.observe('tab','trends');
+  assert.equal(g.commitPlan({servings:8,buffer:2,reorder:2}),null);
+  assert.match(g.open(),/Cold Brew/,'opening initially needs cold brew stock');
+  const plan=g.recipePlan({oat:8});assert.equal(g.placeOrder(plan.lines),null);
+  assert.equal(g.placeOrder([line('Decaf',2,'budget')]),null);
+  const today=g.deliveries.find(d=>d.learningDay===2&&d.supplier==='quick'),tomorrow=g.deliveries.at(-1),before=g.cash;
+  g.tickPlanning(4);assert.equal(today.arrived,false,'normal lead time still applies');
+  g.tickPlanning(20);assert(today.arrived);assert(today.shelved,'learned FIFO allows routine deliveries onto shelves');
+  assert(g.servings('oat')>=8,'cold brew ingredients arrive before opening');
+  assert.equal(g.phase,'planning');assert.equal(g.elapsed,0);assert.equal(g.metrics.arrived,0);assert.equal(g.cash,before,'transport does not spend money again');
+  assert.equal(tomorrow.arrived,false,'next-day shipping never becomes same-day');
+  const copy=InventorySim.restore(g.save());assert.equal(copy.servings('oat'),g.servings('oat'));
+  assert.equal(copy.open(),null,'Day 2 can start after preparation delivery');assert.equal(copy.elapsed,0,'entire shift remains available');
+  const clock=copy.clock;copy.tickPlanning(10);assert.equal(copy.clock,clock,'planning tick cannot advance an open shift');
+}
+{
+  const g=new InventorySim(2),cart=[line('Cup',20,'quick'),line('Whole Milk',8,'budget'),line('Cookie',4,'quick',true,true)];
+  const original=JSON.stringify(cart),saved=g.save();
+  const changed=g.repriceCart(cart,'premium');assert(changed);
+  assert(changed.lines.every(l=>l.supplier==='premium'));
+  assert.deepEqual(changed.lines.map(({supplier,...l})=>l),cart.map(({supplier,...l})=>l),'quantities, frozen packs and express shipping are preserved');
+  assert.equal(JSON.stringify(cart),original,'comparison does not mutate the old cart');
+  assert.equal(g.save(),saved,'switching a cart does not spend cash, schedule deliveries or change stock');
+  near(changed.before.total,g.quote(cart).total,'old cart uses actual mixed-supplier freight');
+  near(changed.after.total,g.quote(changed.lines).total,'new cart uses current prices and bulk discounts');
+  near(changed.difference,changed.after.total-changed.before.total,'displayed total difference');
+  near(changed.after.shipping,6.25,'standard and express freight groups remain separate');
+  const fast=g.repriceCart(changed.lines,'quick');assert(fast.difference>0);
+  const cheap=g.repriceCart(changed.lines,'budget');assert(cheap.difference<0);
+  assert.equal(g.offer('Whole Milk',cheap.lines[1].supplier).dayOffset,1,'switching does not secretly upgrade budget shipping');
+  assert.equal(g.repriceCart(cheap.lines,'budget').difference,0);
+  assert.equal(g.repriceCart([],'quick'),null);assert.equal(g.repriceCart(cart,'missing'),null);
+  g.discount=true;const discounted=g.repriceCart(cart,'budget');assert(discounted.after.goods<cheap.after.goods,'supplier promotions are included');
+  g.tutorial.cart=changed.lines;assert.deepEqual(InventorySim.restore(g.save()).tutorial.cart,changed.lines,'repriced cart survives reload');
+}
+{
   const g=new InventorySim(3);clear(g);
   g.addLot('Whole Milk',1,2,3);g.clock+=5000;g.markExpired();
   assert.equal(g.stock('Whole Milk'),1,'time alone must not spoil food');

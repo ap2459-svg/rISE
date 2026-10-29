@@ -101,7 +101,7 @@
       if(!this.lesson.plan)return 'Complete today’s required operations plan before opening.';
       if(this.day===1&&!this.learning.legacyFIFO&&!this.learning.events.some(e=>e.kind==='fifo'))return 'Unpack a delivery with older stock in front before opening.';
       if(this.day===1&&!this.deliveries.some(d=>!d.cancelled&&d.learningDay===1&&d.supplier===this.lesson.plan.supplier))return 'Place an order with your chosen supplier so you can evaluate the delivery.';
-      if(this.day===2&&(!this.menu.oat.enabled||this.servings('oat')<1))return 'Prepare at least one Oat Milk Cold Brew and put it on the menu to test your forecast.';
+      if(this.day===2&&(!this.menu.oat.enabled||this.servings('oat')<1))return 'Prepare at least one Oat Milk Cold Brew and put it on the menu. Same-day deliveries arrive while you prepare. Budget standard orders arrive tomorrow; choose a same-day supplier or express shipping for ingredients needed today.';
       if(this.day===3&&!MENU.some(p=>p.kind==='bakery'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'Put a stocked bakery item on the menu to test your make-or-buy strategy. Bake frozen portions or order ready-made stock.';
       if(this.day===4&&!['latte','oat'].some(id=>this.menu[id].enabled&&this.servings(id)>0))return 'Stock and enable at least one of the drinks you priced so customers can respond to your decision.';
       return null;
@@ -294,6 +294,12 @@
       }
       const shipping=sum(Object.values(groups).map(g=>(g.express?5:1.25)*(this.upgrades.includes('ordering')?.5:1)));
       return {goods,shipping,total:goods+shipping};
+    }
+    repriceCart(cart,supplierId) {
+      if(!this.supplier(supplierId))return null;
+      const before=this.quote(cart);if(!before)return null;
+      const lines=cart.map(l=>({...l,supplier:supplierId})),after=this.quote(lines);
+      return after?{lines,before,after,difference:after.total-before.total}:null;
     }
     placeOrder(cart) {
       if(!['planning','shift'].includes(this.phase)) return 'Orders open again tomorrow.';
@@ -681,6 +687,11 @@
       const overhead=CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0);
       if(!this.spendOperating(overhead)) return `Keep $${overhead} available for today’s rent, power and staff.`;
       this.phase='shift'; this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
+    }
+    tickPlanning(seconds) {
+      if(this.phase!=='planning'||!Number.isFinite(seconds)||seconds<=0)return;
+      this.clock+=Math.min(seconds,CONFIG.shiftSeconds);
+      this.processDeliveries();this.processBatches();this.markExpired();
     }
     advancePlanning() {
       if(this.phase!=='planning') return false;
