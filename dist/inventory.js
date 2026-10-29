@@ -1,4 +1,4 @@
-/* Café Rescue presentation. Owns only the Inventory Manager entry and its scoped UI. */
+/* Inventory Manager presentation. Owns only the Inventory Manager entry and its scoped UI. */
 (() => {
   'use strict';
   const {CONFIG,SUPPLIERS,MENU,DAYS,UPGRADES}=RESCUE;
@@ -103,7 +103,9 @@
     $('#cr-modal')?.remove();
     $('.cr-game')?.setAttribute('inert','');
     const overlay=document.createElement('div');overlay.id='cr-modal';overlay.className='cr-overlay';
-    overlay.innerHTML=`<section class="cr-dialog ${key==='intro'?'cr-intro':''}" data-dialog="${key}" role="dialog" aria-modal="true" aria-labelledby="cr-dialog-title" tabindex="-1"><div class="cr-kicker">rISE CAFÉ · CAFÉ RESCUE</div><h2 id="cr-dialog-title">${title}</h2><div class="cr-dialog-body">${body}<p id="cr-dialog-error" class="cr-error" role="status"></p></div><footer>${footer}</footer></section>`;
+    const tutorialStep=game?.tutorial.active?game.tutorialStep():null;
+    if(tutorialStep&&!['intro','resume','tour-intro','briefing','tutorial-complete'].includes(key))body=`<p id="cr-dialog-guide" class="cr-note">${tourDescriptions[tutorialStep]}</p>`+body;
+    overlay.innerHTML=`<section class="cr-dialog ${key==='intro'?'cr-intro':''}" data-dialog="${key}" role="dialog" aria-modal="true" aria-labelledby="cr-dialog-title" tabindex="-1"><div class="cr-kicker">rISE CAFÉ · INVENTORY MANAGER</div><h2 id="cr-dialog-title">${title}</h2><div class="cr-dialog-body">${body}<p id="cr-dialog-error" class="cr-error" role="status"></p></div><footer>${footer}</footer></section>`;
     app.append(overlay);overlay.querySelector('section').focus();
     overlay.onclick=handleClick;
     overlay.onchange=handleChange;
@@ -116,6 +118,7 @@
       else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
     };
     updateHUD();
+    highlightTour();
   }
   function closeDialog(resume=true) {
     const prior=dialogState;dialogState=null;$('#cr-modal')?.remove();$('.cr-game')?.removeAttribute('inert');
@@ -145,9 +148,9 @@
     const card=[...document.querySelectorAll('.role-choice')].find(n=>n.querySelector('h2')?.textContent==='Inventory Manager');
     if(!card)return;
     card.classList.remove('locked');card.classList.add('play');card.querySelector('small')?.remove();
-    card.querySelector('h2').textContent='Café Rescue';
+    card.querySelector('h2').textContent='Inventory Manager';
     card.querySelector('p').textContent='Inventory Manager · Five days to save the café.';
-    card.insertAdjacentHTML('beforeend','<button id="inventory-start" class="big-btn">Play Café Rescue →</button>');
+    card.insertAdjacentHTML('beforeend','<button id="inventory-start" class="big-btn">Play Inventory Manager →</button>');
     $('#inventory-start').onclick=start;
   };
   function intro(step) {
@@ -202,10 +205,10 @@
     lastXP=game.xp;
     document.body.classList.add('inventory-playing');
     app.innerHTML=`<main class="cr-game" data-level="${game.visualLevel}">
-      <header class="cr-header"><div class="cr-brand">rISE Café<small>CAFÉ RESCUE</small></div><div class="cr-week" aria-label="Five day campaign">${DAYS.map((d,i)=>`<span data-day="${i+1}" title="${d.title}">${i+1}</span>`).join('')}</div>
+      <header class="cr-header"><div class="cr-brand">rISE Café<small>INVENTORY MANAGER</small></div><div class="cr-week" aria-label="Five day campaign">${DAYS.map((d,i)=>`<span data-day="${i+1}" title="${d.title}">${i+1}</span>`).join('')}</div>
       <button data-action="money" class="cr-bank" id="cr-bank"></button><div class="cr-reputation" id="cr-reputation"></div>${btn('help','?','cr-icon','aria-label="How to play"')}${btn('exit','Exit')}</header>
       <div class="cr-guide" id="cr-guide" aria-live="polite"></div>
-      <div class="cr-work"><nav class="cr-nav" aria-label="Café Rescue sections">
+      <div class="cr-work"><nav class="cr-nav" aria-label="Inventory Manager sections">
         ${[['stock','shelf','Stockroom'],['supply','truck','Suppliers'],['menu','menu','Menu'],['trends','trend','Sales & trends']].map(([id,icon,label])=>btn('tab',`<span>${uiIcon(icon)}</span>${label}`,'',`data-tab="${id}"`)).join('')}
         <div class="cr-nav-bottom"><div class="cr-team">${uiIcon("shop")}<b>Your five-day comeback</b></div>${btn('operations-plan','Required operations plan')}${btn('brief','Today’s mission')}${btn('upgrades',' Improve café')}<small id="cr-xp"></small></div>
       </nav><section class="cr-workspace" id="cr-workspace" aria-label="Game workspace"></section></div>
@@ -241,15 +244,33 @@
   function tourIntro() {
     dialog('tour-intro','Your café. Your comeback.',`<div class="cr-tour-summary">${uiIcon('shop')}<p>Clear expired food. Restock coffee supplies. Win back your customers.</p></div><p class="cr-note"><b>This is your real opening preparation.</b> Cleanup, menu choices and confirmed orders carry into Day 1. You pay for an order once; there are no tutorial fees. The café stays closed while you learn.</p>`,btn('tour-begin','Show me how','cr-primary')+btn('skip-tour-intro','Skip tutorial'));
   }
+  const tourDescriptions={
+    stock:'The stockroom shows what you own, what is missing and what needs attention.',
+    inspect:'Inspecting a product shows its quantity and days of freshness.',
+    clean:'Expired ingredients cannot be served. Discard them to make the shelves safe.',
+    missing:'A drink needs serving supplies too. No cups means no coffee sales.',
+    suppliers:'This is where you buy ingredients and supplies using your available budget.',
+    compare:'A cheaper supplier may arrive later or be less reliable. Compare the tradeoffs.',
+    cart:'A small batch helps you reopen without spending your whole budget.',
+    review:'The total includes supplies and shipping. Keep money available for surprises.',
+    order:'Only confirming an order spends money. You can still go back and edit it.',
+    delivery:'Ordered stock must arrive and reach the shelves before it can be used.',
+    menu:'Choose what customers can buy. Staff prepare their orders automatically.',
+    recipe:'Each recipe lists its exact ingredients. The planner subtracts stock you already have.',
+    trends:'Recent requests help you forecast demand, but future sales are uncertain.',
+    restock:'One missing ingredient can block an entire drink. Complete the recipe before opening.',
+    ready:'Next, confirm your opening plan and watch how your choices affect the shift.'
+  };
   function guide() {
     const step=game.tutorialStep();if(!step)return '';
     const steps=Object.keys(tourSteps).filter(k=>k!=='restock'),index=step==='restock'?steps.length:steps.indexOf(step)+1;
-    return `<div class="cr-guide-face">${uiIcon('menu')}</div><div><small>GUIDED PREPARATION · ${index} / ${steps.length}</small><b>${tourSteps[step][0]}</b></div>${step==='ready'?btn('finish-tour','Finish tutorial','cr-primary'):''}${btn('skip-guide','Skip tutorial','cr-text')}`;
+    return `<div class="cr-guide-face">${uiIcon('menu')}</div><div><small>GUIDED PREPARATION · ${index} / ${steps.length}</small><b>${tourSteps[step][0]}</b><p class="cr-guide-description">${tourDescriptions[step]}</p></div>${step==='ready'?btn('finish-tour','Finish tutorial','cr-primary'):''}${btn('skip-guide','Skip tutorial','cr-text')}`;
   }
   function highlightTour() {
     document.querySelectorAll('.cr-tour-target').forEach(n=>{n.classList.remove('cr-tour-target');n.removeAttribute('aria-describedby');});
-    const step=game.tutorialStep();if(!step||dialogState)return;
-    document.querySelectorAll(tourSteps[step][1]).forEach(n=>{n.classList.add('cr-tour-target');n.setAttribute('aria-describedby','cr-guide');});
+    const step=game.tutorialStep();if(!step)return;
+    const root=dialogState?$('#cr-modal'):document;
+    root?.querySelectorAll(tourSteps[step][1]).forEach(n=>{n.classList.add('cr-tour-target');n.setAttribute('aria-describedby',dialogState?'cr-dialog-guide':'cr-guide');});
     $('#cr-play').disabled=!!step;
   }
   function drawTab() {
@@ -636,7 +657,7 @@
     else if(a==='sound'){game.sound=!game.sound;help();}
     else if(a==='exit')dialog('exit','Save your spot?',`<p>Your campaign stays in this browser. You can resume from the mode menu.</p>${saveError?'<p class="cr-error">Browser storage is unavailable. Progress cannot be saved on this device.</p>':''}`,btn('exit-now','Save & exit','cr-primary')+btn('close','Keep playing'));
     else if(a==='exit-now'){save();closeDialog(false);roles();return;}
-    else if(a==='restart-confirm')dialog('restart','Start a fresh five-day rescue?',`<p>This replaces this browser’s Café Rescue save. Try another strategy and see how it changes the outcome.</p>`,btn('restart','Start new campaign','cr-primary')+btn('close','Keep this campaign'));
+    else if(a==='restart-confirm')dialog('restart','Start a fresh five-day rescue?',`<p>This replaces this browser’s Inventory Manager save. Try another strategy and see how it changes the outcome.</p>`,btn('restart','Start new campaign','cr-primary')+btn('close','Keep this campaign'));
     else if(a==='restart'){game=new InventorySim();window.inventoryGame=game;tab='stock';category='rescue';cart=[];recipeTargets={};feedbackMessage=null;dialogState=null;render();intro(0);}
     updateHUD();save();
   }
