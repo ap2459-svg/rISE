@@ -180,6 +180,7 @@
     if(day===2||day===5)content=`<p>${day===2?'Cold brew is trending.':'The festival is your final test.'} Inspect actual demand, then choose a serving target and buffer. Future customer numbers are uncertain.</p>${btn('plan-trends','Inspect Sales & trends')}${number('servings',day===2?'Cold brew serving estimate':'Vanilla Latte serving estimate',1,40,day===2?12:18)}${buffer}${day===5?capacity:''}`;
     if(day===3)content=`<p>Making pastries uses staff and oven time; buying them costs more and relies on deliveries.</p>${select('strategy','Make, buy or combine?',[['inhouse','In-house',`Frozen portions + ${money(CONFIG.bakeConversion)} labor/energy per batch. ${CONFIG.bakeSeconds}s oven time; shares staff with drinks.`],['outsource','Outsource','Higher purchase cost. Frees staff and ovens; delivery risk remains.'],['hybrid','Hybrid','Mix both for flexibility; coordinate stock and limited space.']])}${capacity}${investment}<p class="cr-note">Your existing buffer and reorder settings carry forward. Stock one bakery item to test your strategy.</p>`;
     if(day===4)content=`<p>Confirm two drink prices. Keep a price if it fits your strategy; compare margins with customer demand.</p>${['latte','oat'].map(id=>{const p=MENU.find(p=>p.id===id);return `<label>${p.name} · cost ${money(game.unitCost(id))}<input id="cr-plan-price-${id}" type="number" min="${p.price*.5}" max="${p.price*1.8}" step="0.25" value="${draft['price-'+id]??game.menu[id].price}"><small id="cr-plan-margin-${id}">Profit per sale before overhead: ${money(game.menu[id].price-game.unitCost(id))}</small></label>`;}).join('')}`;
+    if(day===1&&!game.upgrades.includes('tracker'))content+=`<p class="cr-note">Optional: ${money(assistantCost())} once unlocks bulk restocking for empty menu supplies.</p>${assistantButton()}`;
     dialog('operations-plan',`Day ${day} · Your operations plan`,`<div class="cr-plan-form">${content}</div><p class="cr-note">${money(game.spendable)} available. Plans carry forward. No automatic cart purchases.</p>`,btn('save-plan','Apply my plan','cr-primary')+btn('close','Prepare first'));
   }
   function saveOperationsPlan() {
@@ -327,7 +328,7 @@
     const comparison=cartComparison&&cartComparison.day===game.day&&cartComparison.signature===JSON.stringify(cart)&&quote?.total===cartComparison.after.total?cartComparison:null;
     const comparisonHtml=comparison?`<p class="cr-cart-comparison" role="status">Supplier change: ${money(comparison.before.total)} → ${money(comparison.after.total)}<b>${comparison.difference<-.005?`Save ${money(-comparison.difference)}`:comparison.difference>.005?`${money(comparison.difference)} more`:'Same total price'}</b></p>`:'';
     return `<div class="cr-work-title"><div><span class="cr-kicker">BUY WHAT YOUR MENU NEEDS</span><h1>Order supplies</h1></div><span class="cr-health" id="cr-spendable">${money(game.spendable)} available</span></div>
-      <div class="cr-order-layout"><div class="cr-shopping"><div class="cr-draft">${btn('recipe-picker','Plan a menu item')}${btn('draft-small','Small batch · 8 drinks')}${btn('draft-buffer','Buffer · 12 drinks')}</div>
+      <div class="cr-order-layout"><div class="cr-shopping"><div class="cr-draft">${btn('recipe-picker','Plan a menu item')}${assistantButton()}${btn('draft-small','Small batch · 8 drinks')}${btn('draft-buffer','Buffer · 12 drinks')}</div>
       <label class="cr-select">Product<select id="cr-product">${Object.entries(INVENTORY_GROUPS).map(([group,names])=>`<optgroup label="${labels[group]}">${names.map(n=>`<option ${n===selected?'selected':''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select></label>
       <div class="cr-shopping-meta"><span id="cr-shopping-stock">${productArt(i.name)} ${game.stock(selected)} fresh · ${pending} incoming</span><span id="cr-spaces">${game.capacity(selected)-game.occupied(selected)-pending} shelf spaces</span></div>
       <div class="cr-suppliers">${supplierCards()}</div>
@@ -441,13 +442,31 @@
     const l=cart[index];if(!l)return;
     dialog('cart-edit',`${productArt(l.name)} ${esc(l.name)}`,`<div class="cr-cart-form"><label>Quantity<input id="cr-line-qty" type="number" min="1" max="200" step="1" value="${l.qty}"></label><label>Supplier<select id="cr-line-supplier">${SUPPLIERS.filter(s=>s.unlock<=game.day).map(s=>`<option value="${s.id}" ${s.id===l.supplier?'selected':''}>${s.name}</option>`).join('')}</select></label><label><input type="checkbox" id="cr-line-express" ${l.express?'checked':''}> Express shipping (+fee)</label></div><p class="cr-note">Changes update the cart total. You still review and confirm before spending anything.</p>`,btn('save-line','Update cart','cr-primary',`data-index="${index}"`)+btn('close','Cancel'));
   }
+  const assistantCost=()=>UPGRADES.find(u=>u.id==='tracker').cost;
+  const assistantButton=()=>btn(game.upgrades.includes('tracker')?'bulk-restock':'assistant-offer',game.upgrades.includes('tracker')?'Restock all empty supplies':`Unlock bulk restock · ${money(assistantCost())}`);
+  function assistantOffer() {
+    if(game.upgrades.includes('tracker')){bulkRestock();return;}
+    dialog('assistant-offer','Stockroom Assistant',`<div class="cr-character"><span>${uiIcon('trend')}</span><p><b>${money(assistantCost())} once · stays unlocked all five days</b>Draft every out-of-stock ingredient and supply needed by your active menu in one cart.</p></div><p>It checks usable incoming deliveries and your cart to avoid duplicate orders. Ingredients and shipping still cost extra. You choose quantities and confirm checkout.</p><div class="cr-stat-row"><span>Available<b>${money(game.spendable)}</b></span><span>After unlock<b>${money(game.spendable-assistantCost())}</b></span></div>`,btn('buy-assistant',`Unlock · ${money(assistantCost())}`,'cr-primary',game.spendable<assistantCost()?'disabled':'')+btn('close','Keep ordering manually'));
+  }
+  function bulkRestock(size=8) {
+    if(!game.upgrades.includes('tracker')){assistantOffer();return;}
+    const plan=game.bulkStockoutPlan(cart,supplier,size,express);
+    if(!plan){toast('Bulk restocking is available during preparation or the shift.',false);return;}
+    const combined=plan.quote;
+    dialog('bulk-restock','Restock all empty menu supplies',`<p>Plan ${size} servings per active drink, with smaller bakery batches. Only currently empty supplies are added; usable deliveries and your existing cart count first.</p><div class="cr-draft">${[8,12,16].map(n=>btn('bulk-size',String(n)+' servings','',`data-size="${n}" aria-pressed="${size===n}"`)).join('')}</div><div class="cr-bulk-lines">${plan.lines.map(l=>`<span>${productArt(l.name)}<b>${esc(l.name)}${l.frozen?' (frozen)':''}</b><strong>+${l.qty}</strong></span>`).join('')||'<p>Empty supplies are already covered by usable deliveries, baking or your cart.</p>'}</div><p class="cr-note">${plan.blocked|| (plan.unfilled?'Some items do not fit on your shelves. Free space or lower the serving target.':`${SUPPLIERS.find(s=>s.id===supplier).name} · ${express?'Express':'Standard'} shipping. You can edit quantities and companies in the cart.`)}</p><div class="cr-stat-row"><span>Combined cart total<b>${combined?money(combined.total):'$0.00'}</b></span><span>Available<b>${money(game.spendable)}</b></span></div>`,btn('bulk-add','Add all to cart','cr-primary',`data-size="${size}" ${!plan.lines.length||plan.blocked?'disabled':''}`)+btn('close','Back'));
+  }
+  function lossDetails() {
+    const loss=game.lossNotice();if(!loss)return;
+    dialog('loss-details','What stopped these sales?',`<p><b>${loss.count} lost ${loss.count===1?'sale':'sales'} · ${money(loss.revenue)} potential revenue</b></p><p>Customers wanted ${esc(loss.products.map(id=>MENU.find(p=>p.id===id).name).join(', '))}.</p><div class="cr-shortage-lines">${loss.missing.map(n=>`<div>${productArt(n)}<span><b>${esc(n)}</b><small>${game.stock(n)===0?'OUT OF STOCK':`${game.stock(n)} available now · insufficient when ordered`}${game.usableIncoming(n)?` · ${game.usableIncoming(n)} arriving today`:''}</small></span>${btn('restock-loss','Order','',`data-name="${esc(n)}"`)}</div>`).join('')}</div><p class="cr-note">Unfilled orders use no inventory. Missed revenue is a lost opportunity, not an extra cash charge. Lower service affects customer rating.</p>`,assistantButton()+btn('close','Back to café'));
+  }
   function drawFeedback() {
     if(!game||!$('#cr-feedback'))return;
     const loss=game.lossNotice(),expiry=game.expiryNotice();
     let html;
     if(loss&&!game.tutorial.active&&game.phase==='shift') {
       const products=loss.products.map(id=>MENU.find(p=>p.id===id).name),missing=loss.missing;
-      html=`<div class="cr-notice cr-loss-notice">${uiIcon('warning')}<div><div role="status"><b>${loss.count===1?'Lost sale!':`${loss.count} sales lost!`}</b><p>Wanted: ${esc(products.slice(0,2).join(' + '))}${products.length>2?' + more':''}. Missing: ${esc(missing.slice(0,2).join(', '))}${missing.length>2?' + more':''}.</p><small>Potential revenue lost: <strong>${money(loss.revenue)}</strong> · Fewer customers served hurts your rating.</small></div><div class="cr-notice-actions">${btn('restock-loss','Restock Missing Ingredient','',`data-name="${esc(missing[0])}"`)}${btn('dismiss-loss','Dismiss','cr-text')}</div></div></div>`;
+      const empty=missing.filter(n=>game.stock(n)===0),short=empty.length?empty:missing;
+      html=`<div class="cr-notice cr-loss-notice">${uiIcon('warning')}<div><div role="status"><b>${loss.count===1?'SALE LOST':'SALES LOST · '+loss.count} — STOCK SHORTAGE</b><p class="cr-missing-stock"><strong>${empty.length?'OUT OF STOCK':'MISSING AT TIME OF SALE'}: ${esc(short.slice(0,3).join(' · '))}${short.length>3?` (+${short.length-3} more)`:''}</strong></p><small>Wanted ${esc(products.slice(0,2).join(' + '))}. Revenue missed: <strong>${money(loss.revenue)}</strong>. Lost sales affect your rating.</small></div><div class="cr-notice-actions">${btn('loss-details','View shortages')}${assistantButton()}${btn('dismiss-loss','Dismiss','cr-text')}</div></div></div>`;
     } else if(expiry&&!game.tutorial.active&&['planning','shift'].includes(game.phase)) {
       html=`<div class="cr-notice cr-expiry-notice">${uiIcon('warning')}<div><div role="status"><b>Inventory alert — expiring soon</b><p>${esc(expiry.name)} expires in ${expiry.days} day! Use the older ${expiry.qty} units first.</p></div><div class="cr-notice-actions">${btn('view-expiry','View Inventory','',`data-name="${esc(expiry.name)}"`)}${btn('menu-expiry','Review Menu','',`data-name="${esc(expiry.name)}"`)}${btn('dismiss-expiry','Dismiss','cr-text',`data-name="${esc(expiry.name)}"`)}</div></div></div>`;
     } else if(feedbackMessage&&Date.now()<feedbackMessage.until) {
@@ -622,7 +641,17 @@
       toast(plan.unfilled?'Added what fits. Your serving plan still needs more shelf space.':plan.lines.length?'Missing recipe supplies added. Edit quantities or companies in the cart.':'This plan is already covered by usable stock, deliveries and your cart.',!plan.unfilled);
     }
     else if(a==='dismiss-loss'){game.dismissLosses();drawFeedback();}
-    else if(a==='restock-loss'){game.dismissLosses();selected=d.name;frozen=game.strategy==='inhouse'&&item(selected).group==='bakery';qty=Math.max(1,game.suggested(selected)||6);tab='supply';drawTab();drawFeedback();}
+    else if(a==='restock-loss'){game.dismissLosses();selected=d.name;frozen=game.strategy==='inhouse'&&item(selected).group==='bakery';qty=Math.max(1,game.suggested(selected)||6);tab='supply';closeDialog();drawTab();drawFeedback();}
+    else if(a==='loss-details')lossDetails();
+    else if(a==='assistant-offer')assistantOffer();
+    else if(a==='buy-assistant'){if(game.buyUpgrade('tracker')){bulkRestock();toast('Stockroom Assistant unlocked for the campaign. Inventory and shipping are purchased separately.');}else error('Not enough available cash and credit, or the assistant is already unlocked.');}
+    else if(a==='bulk-restock')bulkRestock();
+    else if(a==='bulk-size')bulkRestock(Number(d.size));
+    else if(a==='bulk-add'){
+      const plan=game.bulkStockoutPlan(cart,supplier,Number(d.size),express);
+      if(!plan||plan.blocked){error(plan?.blocked||'Bulk restocking is unavailable.');return;}
+      tab='supply';closeDialog();addToCart(plan.lines);toast('Empty menu supplies added together. Adjust quantities and review checkout before purchasing.');
+    }
     else if(['dismiss-expiry','view-expiry','menu-expiry'].includes(a)) {
       game.dismissExpiry(d.name);
       if(a==='view-expiry'){tab='stock';category=item(d.name).group;drawTab();inspect(d.name);}

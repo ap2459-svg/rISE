@@ -51,7 +51,7 @@
   const UPGRADES=[
     {id:'fridge',name:'Better refrigerator',icon:'fridge',cost:45,day:2,effect:'New milk and fresh bakery last 50% longer.'},
     {id:'storage',name:'Organized shelving',icon:'shelf',cost:30,day:2,effect:'50% more storage; easier FIFO rotation.'},
-    {id:'tracker',name:'Inventory tracker',icon:'trend',cost:22,day:2,effect:'Live low-stock alerts and a reorder-cart shortcut.'},
+    {id:'tracker',name:'Stockroom Assistant',icon:'trend',cost:18,day:1,effect:'One-time unlock: draft all out-of-stock active-menu supplies together, plus low-stock alerts. Goods and shipping cost extra.'},
     {id:'contract',name:'Supplier partnership',icon:'contract',cost:38,day:2,effect:'+10 points supplier reliability, up to 100%.'},
     {id:'oven',name:'Second bakery rack',icon:'oven',cost:48,day:3,effect:'Two batches at once; baking takes 5 seconds.'},
     {id:'ordering',name:'Combined ordering',icon:'menu',cost:26,day:3,effect:'Half the shipping fees; 5 seconds off lead times.'},
@@ -450,6 +450,15 @@
     reorderPlan(supplier='quick') {
       return this.activeIngredients().map(name=>({name,qty:this.suggested(name),supplier,frozen:BY_NAME[name].group==='bakery'&&this.strategy==='inhouse',express:false})).filter(l=>l.qty>0);
     }
+    bulkStockoutPlan(cart=[],supplier='quick',size=8,express=false) {
+      if(!this.upgrades.includes('tracker')||!['planning','shift'].includes(this.phase)||!Number.isInteger(size)||size<1||size>40)return null;
+      const targets=Object.fromEntries(MENU.filter(p=>p.day<=this.day&&this.menu[p.id].enabled).map(p=>[p.id,p.kind==='bakery'?Math.max(2,Math.floor(size*.25)):size]));
+      const plan=this.recipePlan(targets,cart,supplier,express);if(!plan)return null;
+      const empty=new Set(plan.rows.filter(r=>r.stock===0).map(r=>r.name));
+      const lines=plan.lines.filter(l=>empty.has(l.name)),combined=cart.map(l=>({...l}));
+      for(const l of lines){const existing=combined.find(c=>c.name===l.name&&!!c.frozen===!!l.frozen);if(existing)existing.qty+=l.qty;else combined.push({...l});}
+      return {lines,quote:this.quote(combined),unfilled:sum(plan.rows.filter(r=>empty.has(r.name)).map(r=>r.unfilled)),blocked:plan.blocked};
+    }
     /* Menu, production and finance. Conversion costs stay in inventory until sold. */
     unitCost(id) {
       const p=MENU.find(p=>p.id===id); if(!p) return 0;
@@ -504,7 +513,7 @@
     }
     buyUpgrade(id) {
       const u=UPGRADES.find(u=>u.id===id);
-      if(!u||this.upgrades.includes(id)||u.day>this.day||!['planning','review'].includes(this.phase)||(this.day===5&&this.phase==='review')||!this.spendOperating(u.cost)) return false;
+      if(!u||this.upgrades.includes(id)||u.day>this.day||!(['planning','review'].includes(this.phase)||(id==='tracker'&&this.phase==='shift'))||(this.day===5&&this.phase==='review')||!this.spendOperating(u.cost)) return false;
       this.upgrades.push(id); this.earn(`upgrade-${id}`,'Continuous improvement');
       if(this.phase==='review') this.refreshReport();
       return true;

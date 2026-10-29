@@ -64,6 +64,34 @@ function accounting(g){
 }
 // Calendar freshness does not decrease with seconds, speed, or planning waits.
 {
+  const g=new InventorySim(31);clear(g);
+  assert.equal(g.bulkStockoutPlan(),null,'bulk assistant must be unlocked');
+  const initial=g.cash;assert(g.buyUpgrade('tracker'));near(g.cash,initial-18,'one-time assistant cost');
+  assert.equal(g.buyUpgrade('tracker'),false);near(g.cash,initial-18,'cannot charge twice');
+  let plan=g.bulkStockoutPlan();assert(plan);
+  assert(plan.lines.some(l=>l.name==='Whole Milk'));assert(plan.lines.some(l=>l.name==='Cup'));
+  assert(!plan.lines.some(l=>l.name==='Original Blend'),'positive stock is not indiscriminately refilled');
+  assert(!plan.lines.some(l=>l.name==='Decaf'),'unused recipes are not automatically purchased');
+  const state=g.save();plan=g.bulkStockoutPlan();assert.equal(g.save(),state,'bulk draft never purchases goods');
+  assert.equal(g.bulkStockoutPlan(plan.lines).lines.length,0,'repeated drafting does not duplicate shared supplies');
+  assert.equal(new Set(plan.lines.map(l=>l.name)).size,plan.lines.length);
+  assert.equal(g.placeOrder([line('Whole Milk',4)]),null);
+  assert.equal(g.bulkStockoutPlan().lines.find(l=>l.name==='Whole Milk').qty,4,'usable incoming supplies reduce the draft');
+  assert(!g.bulkStockoutPlan([line('Whole Milk',4)]).lines.some(l=>l.name==='Whole Milk'),'cart and incoming stock count together');
+  const draft=[line('Cup',4,'premium')],merged=g.bulkStockoutPlan(draft,'quick',20);
+  const combined=draft.map(l=>({...l}));for(const l of merged.lines){const c=combined.find(c=>c.name===l.name&&!!c.frozen===!!l.frozen);if(c)c.qty+=l.qty;else combined.push(l);}
+  near(merged.quote.total,g.quote(combined).total,'combined preview includes merged bulk discounts');
+  assert.equal(merged.lines.find(l=>l.name==='Cup').supplier,'premium','manual company choices remain intact');
+  const copy=InventorySim.restore(g.save());assert(copy.upgrades.includes('tracker'));accounting(g);
+  const tomorrow=new InventorySim(1);clear(tomorrow);tomorrow.buyUpgrade('tracker');tomorrow.placeOrder([line('Whole Milk',8,'budget')]);
+  assert.equal(tomorrow.bulkStockoutPlan().lines.find(l=>l.name==='Whole Milk').qty,8,'tomorrow cannot cover today’s shortage');
+  const bake=new InventorySim(2);clear(bake);bake.buyUpgrade('tracker');bake.setStrategy('inhouse');
+  assert.equal(bake.bulkStockoutPlan().lines.find(l=>l.name==='Cookie').qty,4,'frozen orders respect whole batches');
+  bake.addLot('Cookie',4,.4,7,true);assert(!bake.bulkStockoutPlan().lines.some(l=>l.name==='Cookie'),'usable frozen portions prevent duplicate purchasing');
+  const poor=new InventorySim(9);poor.phase='shift';poor.cash=-745;assert.equal(poor.buyUpgrade('tracker'),false);assert.equal(poor.cash,-745);
+  poor.cash=-500;assert(poor.buyUpgrade('tracker'),'assistant can be unlocked during a shortage');assert.equal(poor.buyUpgrade('fridge'),false,'other upgrades still require preparation');
+}
+{
   const g=new InventorySim(21);clear(g);g.placeOrder([line('Cup',1)]);waitPlanning(g);
   g.day=2;g.beginDay();g.skipTutorial();g.briefed=true;g.observe('tab','trends');
   assert.equal(g.commitPlan({servings:8,buffer:2,reorder:2}),null);
