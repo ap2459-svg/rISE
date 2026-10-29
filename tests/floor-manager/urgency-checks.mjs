@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {newDay,CafeSimulation,cafeSnapshot,clone,simulate} from '../../dist/floor-manager/day.mjs';
+import {createSet} from '../../dist/floor-manager/seating-sets.mjs';
+import {beginConcern} from '../../dist/floor-manager/patience.mjs';
+import {availableFix,applyFix,urgency,stage} from '../../dist/floor-manager/urgent-actions.mjs';
+const state=newDay();state.dayNumber=4;state.waste=true;state.money=300;
+state.objects.push(...createSet('soloSet','work',-9,-1));state.lights.push({type:'light',x:-9,z:-1,upgraded:true});
+const sim=new CafeSimulation(cafeSnapshot(state),'day'),g=sim.parties.find(g=>g.type==='study');g.size=1;g.phase='seated';g.enter=0;g.served=true;g.pos={x:-9,z:-.1};g.seat=sim.seats[0];g.tableId='work';g.seatApproach={x:-9,z:1};g.memberSeats=[g.seat];g.seatTime=4;g.sat=.4;g.satIntegral=1.6;sim.booked.set('work',g);beginConcern(sim,g,'outlets');assert.equal(stage(g),'yellow');g.concern.remaining=9;assert.equal(stage(g),'orange');g.concern.remaining=3;assert.equal(stage(g),'red');
+const fix=availableFix(sim,g,state);assert.equal(fix?.id,'outlet');assert.equal(fix.price,45);assert.equal(availableFix(sim,g,{...state,money:44}),null);
+assert(applyFix(sim,g,state));assert.equal(state.money,255);assert(state.objects.some(o=>o.type==='outlet'));assert.equal(g.concern,null);assert.equal(sim.emotionalState(g),'happy');assert.equal(urgency(g),0);
+const friends=sim.parties.find(g=>g.type==='social');friends.phase='seekingSeat';friends.size=4;friends.enter=0;friends.pos={x:2,z:-2};friends.sat=.2;friends.need='groupSeating';beginConcern(sim,friends,'groupSeating');assert.equal(availableFix(sim,friends,state),null); // $255 cannot buy the $275 arrangement.
+state.money=300;const groupFix=availableFix(sim,friends,state);assert.equal(groupFix?.id,'roundSet');assert(applyFix(sim,friends,state));assert.equal(state.money,25);assert.equal(friends.phase,'toSeat');assert.equal(friends.concern,null);
+const poor=clone(state);poor.money=0;beginConcern(sim,g,'lighting');assert.equal(availableFix(sim,g,poor),null);
+const lost=new CafeSimulation(cafeSnapshot(state),'day'),unhappy=lost.parties.find(p=>p.type==='social');unhappy.phase='seekingSeat';unhappy.pos={x:3,z:2};unhappy.enter=0;unhappy.need='groupSeating';unhappy.sat=.2;beginConcern(lost,unhappy,'groupSeating');unhappy.concern.remaining=.05;lost.patienceTick(unhappy,.1);assert(['exiting','departed'].includes(unhappy.phase));assert(lost.reputation<70);
+for(let day=2;day<=4;day++){const c=clone(state);c.dayNumber=day;const result=simulate(c,'day');assert.equal(result.revenue,result.transactions.reduce((a,t)=>a+t.amount,0));assert(result.actualDuration<=128.2)}
+console.log('PASS: urgency stages, feasible outlet placement, unaffordable actions hidden, live purchase/rescue, mutually exclusive purchases, reachable group seating, unhappy departure, real transaction accounting across all customer days.');
+const full=clone(state);full.money=1000;for(let z=-3;z<6;z+=1.2)for(let x=-10;x<7;x+=1.2)full.objects.push({id:'block'+x+z,type:'fixture',x,z,width:1.2,depth:1.2});const packed=new CafeSimulation(cafeSnapshot(full),'day'),party=packed.parties.find(p=>p.type==='social');party.phase='seekingSeat';party.pos={x:2,z:-4};party.size=4;party.need='groupSeating';beginConcern(packed,party,'groupSeating');assert.equal(availableFix(packed,party,full),null);console.log('PASS: no seating purchase is offered when the floor is full.');
