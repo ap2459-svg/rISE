@@ -3,10 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=./dist/">
-  <title>rISE Café</title>
+  <meta name="theme-color" content="#101b16">
+  <title>Welcome to rISE Café</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #101b16; color: #fff8e9; font-family: system-ui, sans-serif; }
+    main { position: relative; height: 100vh; height: 100svh; display: grid; place-items: center; }
+    video { display: block; width: 100%; height: 100%; object-fit: contain; }
+    nav { position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); display: flex; gap: 12px; flex-wrap: wrap; }
+    button, a { border: 1px solid #fff8e980; border-radius: 999px; padding: 12px 20px; background: #101b16e8; color: #fff8e9; font: inherit; text-decoration: none; cursor: pointer; }
+    button:hover, a:hover { background: #344e3c; }
+    button:focus-visible, a:focus-visible { outline: 3px solid #f8cd75; outline-offset: 4px; }
+    #play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    [hidden] { display: none !important; }
+    noscript { position: absolute; top: 20px; left: 20px; }
+  </style>
 </head>
 <body>
-  <p>Opening rISE Café… <a href="./dist/">Play rISE Café</a></p>
+  <main aria-label="Welcome to rISE Café">
+    <video id="intro" autoplay muted playsinline preload="auto" aria-label="rISE Café introduction">
+      <source src="./dist/assets/rise-intro.mp4" type="video/mp4">
+    </video>
+    <button id="play" type="button" hidden>Play introduction</button>
+    <nav aria-label="Introduction controls">
+      <button id="sound" type="button" aria-pressed="false">Turn sound on</button>
+      <a href="./dist/">Skip intro →</a>
+    </nav>
+    <noscript><a href="./dist/">Enter rISE Café →</a></noscript>
+  </main>
+  <script>
+    const video = document.getElementById('intro');
+    const play = document.getElementById('play');
+    const sound = document.getElementById('sound');
+    const enter = () => window.location.replace('./dist/');
+    video.addEventListener('ended', enter);
+    video.addEventListener('error', enter);
+    video.querySelector('source').addEventListener('error', enter);
+    video.addEventListener('playing', () => { play.hidden = true; });
+    video.addEventListener('pause', () => { if (!video.ended) play.hidden = false; });
+    const start = () => video.play().catch(() => { play.hidden = false; });
+    play.addEventListener('click', start);
+    sound.addEventListener('click', () => {
+      video.muted = !video.muted;
+      sound.textContent = video.muted ? 'Turn sound on' : 'Mute sound';
+      sound.setAttribute('aria-pressed', String(!video.muted));
+      if (video.paused) start();
+    });
+    start();
+  </script>
 </body>
 </html>
