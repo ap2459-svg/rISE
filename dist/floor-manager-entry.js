@@ -1,20 +1,32 @@
-// Floor Manager lives on its own page so its styles, globals and save data stay isolated.
+// Keep the existing Barista and Inventory Manager launch handlers on the illustrated menu.
 (() => {
   const previousRoles = roles;
   roles = function () {
     previousRoles();
-    const card = [...document.querySelectorAll('.role-choice')]
-      .find(el => el.querySelector('h2')?.textContent.trim() === 'Floor Manager');
-    if (!card) return;
-    card.classList.remove('locked');
-    card.classList.add('play');
-    card.querySelector('small')?.remove();
-    const button = document.createElement('button');
-    button.className = 'big-btn';
-    button.id = 'floor-manager-start';
-    button.textContent = 'Play Floor Manager →';
-    button.onclick = () => { window.location.href = 'floor-manager/'; };
-    card.append(button);
+    const barista = app.querySelector('#start');
+    const inventory = app.querySelector('#inventory-start');
+    if (!barista || !inventory) return;
+
+    app.innerHTML = `
+      <main class="role-menu" aria-label="rISE Café — Choose your role">
+        <div class="role-menu-art">
+          <img src="assets/choose-your-role.png" width="1672" height="941" alt="">
+          <nav class="role-menu-buttons" aria-label="Game roles">
+            <a id="floor-manager-start" class="role-menu-button" href="floor-manager/">
+              <span>Floor Manager</span>
+            </a>
+          </nav>
+        </div>
+      </main>`;
+
+    for (const [button, label] of [[barista, 'Barista'], [inventory, 'Inventory Manager']]) {
+      button.className = 'role-menu-button';
+      button.type = 'button';
+      const text = document.createElement('span');
+      text.textContent = label;
+      button.replaceChildren(text);
+    }
+    app.querySelector('.role-menu-buttons').prepend(barista, inventory);
   };
   roles();
 })();
