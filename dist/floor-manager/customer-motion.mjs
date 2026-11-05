@@ -3,7 +3,7 @@ export function seatingRoute(sim, from, seat) {
   const approach = sim.seatPath(seat)?.path?.at(-2);
   if (!approach) return null;
   const path = sim.path(from, approach);
-  return path ? [...path.slice(1), {x:seat.x, z:seat.z}] : null;
+  return path ? path.slice(1) : null;
 }
 export function departureRoute(sim, from, seat, exit) {
   const approach = sim.seatPath(seat)?.path?.at(-2);
