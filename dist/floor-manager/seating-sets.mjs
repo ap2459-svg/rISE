@@ -1,4 +1,4 @@
-import {size,local,placement} from './layout.mjs?v=four-days-11';
+import {size,local,placement} from './layout.mjs?v=chair-shortcut-31';
 export const SETS={
  longSet:{name:'Communal table · 4 seats',type:'longTable',price:330,offsets:[[-.75,-1,Math.PI],[.75,-1,Math.PI],[-.75,1,0],[.75,1,0]]},
  soloSet:{name:'Solo study desk · 1 seat',type:'smallTable',price:95,offsets:[[0,.9,0]]},
@@ -9,7 +9,7 @@ export const SETS={
  groupSet:{name:'Friends’ table · 6 seats',type:'groupTable',price:450,offsets:[[-1.95,0,Math.PI/2],[1.95,0,-Math.PI/2],[-.7,-1.14,Math.PI],[.7,-1.14,Math.PI],[-.7,1.14,0],[.7,1.14,0]]}
 };
 export function createSet(key,id,x=0,z=2){const s=SETS[key];return[{id,type:s.type,x,z,r:0,upgraded:true,setId:id},...s.offsets.map(([dx,dz,r],i)=>({id:id+'-chair-'+i,type:'chair',x:x+dx,z:z+dz,r,upgraded:true,setId:id}))]}
-export function members(o,objects){return o.type!=='chair'&&o.setId?objects.filter(n=>n.setId===o.setId):[o]}
+export function members(o,objects){const base=o.type!=='chair'&&o.setId?objects.filter(n=>n.setId===o.setId):[o];return [...base,...objects.filter(n=>n.type==='tableOutlet'&&n.parentTableId===o.id&&!base.includes(n))]}
 export function rememberSet(o,objects){return members(o,objects).map(n=>({id:n.id,x:n.x,z:n.z,r:n.r||0}))}
 export function transformSet(o,originals,objects){const origin=originals.find(n=>n.id===o.id);if(!origin)return;const a=(o.r||0)-origin.r;for(const saved of originals){if(saved.id===o.id)continue;const item=objects.find(n=>n.id===saved.id);if(!item)continue;const x=saved.x-origin.x,z=saved.z-origin.z;Object.assign(item,{x:o.x+x*Math.cos(a)-z*Math.sin(a),z:o.z+x*Math.sin(a)+z*Math.cos(a),r:saved.r+a})}}
 export function setPlacement(o,objects){const group=members(o,objects),results=group.map(n=>placement(n,objects));return results.includes('blocked')?'blocked':results.includes('tight')?'tight':'clear'}

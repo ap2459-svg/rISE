@@ -1,16 +1,11 @@
 import * as THREE from './vendor/three.module.js';
 
-// The faces are the original Barista artwork, not regenerated characters.
+// Twelve illustrated visitors based on the supplied character reference.
 // Body frames are cached once per character, so a busy café does not redraw
 // dozens of canvases on every animation frame.
-const portraits = await new THREE.TextureLoader().loadAsync('assets/barista-characters.png');
+const portraits = await new THREE.TextureLoader().loadAsync('assets/customer-portraits-v2.png');
 portraits.colorSpace = THREE.SRGBColorSpace;
-const people = [
-  {box:[319,350,203,203],points:'342,427 343,411 360,401 349,386 371,379 374,364 396,370 420,357 445,367 468,368 475,381 490,389 500,411 493,431 487,441 486,458 489,473 476,492 458,505 443,513 441,527 454,539 426,550 400,538 400,522 384,511 367,498 354,485 351,469 345,459 345,445',shirt:'#4d628b',shade:'#344563',light:'#7d8fab',skin:'#e6b283',hair:'#302825',style:'collar'},
-  {box:[145,355,190,198],points:'174,444 164,430 168,407 175,392 191,373 224,362 258,361 286,377 305,407 320,419 312,443 308,459 313,472 306,490 289,503 269,512 267,528 280,538 246,550 220,538 223,520 204,511 190,502 179,487 169,481 167,462',shirt:'#417253',shade:'#2f503c',light:'#709777',skin:'#e8b181',hair:'#462f24',style:'hood'},
-  {box:[512,331,279,237],points:'521,487 535,440 556,397 588,366 622,349 663,340 696,345 727,361 750,393 762,430 774,464 773,500 784,529 776,553 754,568 723,571 698,553 681,560 657,559 639,549 619,553 599,545 581,540 560,548 540,547 527,524',shirt:'#e4dfc3',shade:'#3d7158',light:'#f3efda',skin:'#e4ad7c',hair:'#754525',style:'stripes'},
-  {box:[0,379,158,178],points:'1,467 7,438 19,407 42,387 68,382 93,391 113,408 128,439 138,474 152,502 150,538 130,551 115,550 108,531 91,535 74,528 59,523 43,536 22,547 7,547 1,533',shirt:'#a07d9c',shade:'#745b79',light:'#b79cb1',skin:'#e9b68e',hair:'#754c32',style:'hood'}
-];
+const people = [{"shirt": "#48634d", "shade": "#2f4837", "light": "#f2ebd8", "skin": "#d89d70", "hair": "#42251b", "style": "stripes", "pants": "#7290a6", "pantsLight": "#7290a6"}, {"shirt": "#31523e", "shade": "#203d2b", "light": "#5b7e58", "skin": "#e2a477", "hair": "#39261d", "style": "hood", "pants": "#303133", "pantsLight": "#303133"}, {"shirt": "#f0c9bc", "shade": "#c99b94", "light": "#fff1dc", "skin": "#efb78b", "hair": "#d9a452", "style": "plain", "pants": "#e2a6ab", "pantsLight": "#e2a6ab"}, {"shirt": "#30394c", "shade": "#222b39", "light": "#556078", "skin": "#e3ac7d", "hair": "#aa753c", "style": "collar", "pants": "#ad9c81", "pantsLight": "#ad9c81"}, {"shirt": "#e4d9bc", "shade": "#b7a98b", "light": "#f4efda", "skin": "#dfaa7c", "hair": "#211d1e", "style": "plain", "pants": "#333134", "pantsLight": "#333134"}, {"shirt": "#2b2b2e", "shade": "#191a1d", "light": "#4e4e50", "skin": "#dcaa82", "hair": "#1e1a19", "style": "collar", "pants": "#25252a", "pantsLight": "#25252a"}, {"shirt": "#ead6ac", "shade": "#ae7a50", "light": "#fff0cf", "skin": "#b97f52", "hair": "#29201b", "style": "plain", "pants": "#cfb68b", "pantsLight": "#cfb68b"}, {"shirt": "#e7dec7", "shade": "#bcb59d", "light": "#f7f0dd", "skin": "#c38c60", "hair": "#2a221d", "style": "hood", "pants": "#303133", "pantsLight": "#303133"}, {"shirt": "#303034", "shade": "#1c1c20", "light": "#555057", "skin": "#aa6f45", "hair": "#231c19", "style": "plain", "pants": "#303137", "pantsLight": "#303137"}, {"shirt": "#e8dcc4", "shade": "#b8a887", "light": "#f9eddb", "skin": "#9b623c", "hair": "#211c1a", "style": "plain", "pants": "#343235", "pantsLight": "#343235"}, {"shirt": "#704a33", "shade": "#4b3024", "light": "#997355", "skin": "#e6af80", "hair": "#8f4423", "style": "collar", "pants": "#7693a8", "pantsLight": "#7693a8"}, {"shirt": "#28282b", "shade": "#19191c", "light": "#505054", "skin": "#e4ad82", "hair": "#291e1b", "style": "plain", "pants": "#626264", "pantsLight": "#626264"}];
 const frames = new Map();
 const ink = '#352923';
 
@@ -23,22 +18,7 @@ function canvasTexture(canvas) {
   return t;
 }
 
-function drawPortrait(c,person,character,emotion,center=85,bottom=141,width=105,height=124){
-  const [x,y,w,h]=person.box, scale=Math.min(width/w,height/h), headX=center-w*scale/2, headY=bottom-h*scale;
-  c.save();c.translate(headX,headY);c.scale(scale,scale);c.translate(-x,-y);
-  c.clip(new Path2D('M'+person.points.replaceAll(' ',' L')+' Z'));c.drawImage(portraits.image,0,0);
-  // Redraw the original character's mouth and brows in portrait coordinates.
-  // Hair, eyes, glasses, clothes and the rest of the painted face are retained.
-  if(emotion!=='neutral'){
-    const [mx,my,rx,ry,skin]=[[430,483,17,8,'#f6bc86'],[254,483,17,8,'#f7bc84'],[663,493,29,21,'#f7af7d'],[94,483,17,10,'#f8bf94']][character];
-    c.fillStyle=skin;c.beginPath();c.ellipse(mx,my,rx,ry,character===2?-.25:0,0,Math.PI*2);c.fill();
-    c.strokeStyle='#652b25';c.lineWidth=3.8;c.beginPath();c.moveTo(mx-rx*.65,my+1);c.quadraticCurveTo(mx,my+(emotion==='happy'?13:emotion==='angry'?-13:-7),mx+rx*.65,my+1);c.stroke();
-    if(emotion==='angry'||emotion==='frustrated'){
-      const brows=[[[394,432],[442,430]],[[215,440],[265,437]],[[601,447],[669,420]],[[55,440],[105,432]]][character];
-      c.strokeStyle=person.hair;c.lineWidth=5;for(const [j,[bx,by]]of brows.entries()){c.beginPath();c.moveTo(bx,by+(j===0?-3:3));c.lineTo(bx+20,by+(j===0?4:-4));c.stroke();}
-    }
-  }c.restore();
-}
+function drawPortrait(c,person,character,emotion,center=85,bottom=141,width=105,height=124){const w=portraits.image.width/4,h=portraits.image.height/3,x=(character%4)*w,y=Math.floor(character/4)*h;c.drawImage(portraits.image,x+2,y+2,w-4,h-4,center-width/2,bottom-height,width,height);}
 
 // A seated frame has a fixed hip at y=196. Knees project forward from the
 // chair, shins hang down, and arms rest at table height instead of at the hips.
@@ -52,14 +32,14 @@ function drawSeated(c,person,character,frame,activity,emotion,view){
   const shoe=(x,y)=>path(`M${x-9} ${y-5}Q${x+4} ${y-7} ${x+12} ${y+1}L${x+17} ${y+4} ${x+16} ${y+10} ${x-12} ${y+10}Q${x-15} ${y+4} ${x-9} ${y-5}Z`,'#51443b');
   if(side){
     // Far and near thighs each bend at their own visible knee.
-    path('M65 185Q85 185 111 194Q119 198 116 213L111 246 97 246 97 211 66 208Z','#4b4c5a');
+    path('M65 185Q85 185 111 194Q119 198 116 213L111 246 97 246 97 211 66 208Z',person.pants);
     shoe(104,249);
-    path('M54 186Q78 189 99 203Q105 208 100 222L89 250 74 247 83 217 56 210Q48 205 54 186Z','#72747e');
+    path('M54 186Q78 189 99 203Q105 208 100 222L89 250 74 247 83 217 56 210Q48 205 54 186Z',person.pantsLight);
     shoe(80,252);
     path('M66 201 94 211 83 240',null,true,1.1);
   }else{
-    path('M56 183Q85 176 114 183L119 204Q119 216 104 221L103 250 86 250 82 216 60 216Q51 209 56 183Z','#4c4e5c');
-    path('M57 193Q70 195 81 209L76 251 58 251 56 219Q48 208 57 193Z','#72747e');
+    path('M56 183Q85 176 114 183L119 204Q119 216 104 221L103 250 86 250 82 216 60 216Q51 209 56 183Z',person.pants);
+    path('M57 193Q70 195 81 209L76 251 58 251 56 219Q48 208 57 193Z',person.pantsLight);
     path('M87 195Q99 194 109 205L104 219',null,true,1.2);
     shoe(64,253);shoe(96,253);
   }
@@ -132,7 +112,7 @@ function drawSeated(c,person,character,frame,activity,emotion,view){
 
 function frameTexture(index,pose,frame=0,activity='none',emotion='neutral',view='front') {
   const character = ((index % people.length) + people.length) % people.length;
-  const key = `${character}/${pose}/${frame}/${activity}/${emotion}/${view}`;
+  const key = `${character}/${pose}/${frame}/${activity}/${view}`;
   if (frames.has(key)) return frames.get(key);
   const person = people[character], seated = pose==='seated', walking = pose==='walking';
   const cv = document.createElement('canvas');cv.width=340;cv.height=540;
@@ -154,7 +134,7 @@ function frameTexture(index,pose,frame=0,activity='none',emotion='neutral',view=
     path('M-10 -5 8 -5Q13 -2 15 5L15 9 -14 9Q-16 0 -10 -5Z','#55453a');
     path('M-13 6H13',null,true,1.5);
   });
-  const trouser='#555563',trouserLight='#74737c';
+  const trouser=person.pants,trouserLight=person.pantsLight;
   // Opposing legs have separate knees, shoes and shadows in each walk frame.
   if(seated){
     path('M57 191 112 191 121 211Q120 219 106 220L98 220 101 250 84 250 79 220 58 220Q49 215 57 191Z',trouser);
@@ -265,8 +245,7 @@ function overheadTexture(index,activity='none'){
   ellipse(80,104,45,29,p.shirt);ellipse(40,99,11,24,p.shade);ellipse(120,99,11,24,p.shade);
   ellipse(48,120,9,9,p.skin);ellipse(112,120,9,9,p.skin);
   ellipse(80,66,32,34,p.hair);ellipse(80,43,13,7,p.skin);
-  if(character===1){ellipse(80,59,34,24,'#9c3934');ellipse(80,40,26,7,'#80302d');}
-  else{c.strokeStyle=character===0?'#4e4238':'#946642';c.lineWidth=3;c.beginPath();c.moveTo(65,44);c.quadraticCurveTo(91,49,93,82);c.stroke();}
+  c.strokeStyle=p.hair;c.lineWidth=3;c.beginPath();c.moveTo(65,44);c.quadraticCurveTo(91,49,93,82);c.stroke();
   const shape=(d,fill,width=3)=>{const q=new Path2D(d);c.fillStyle=fill;c.strokeStyle=ink;c.lineWidth=width;c.fill(q);c.stroke(q);};
   if(activity==='laptop'){
     shape('M43 123H117V151H43Z','#92a69d');
@@ -363,14 +342,14 @@ export function paintedCustomer(index=0){
   const top=new THREE.Mesh(new THREE.PlaneGeometry(.78,.78),new THREE.MeshBasicMaterial({map:overheadTexture(index),transparent:true,alphaTest:.05,depthWrite:false,toneMapped:false}));
   top.rotation.x=-Math.PI/2;top.position.y=1.34;top.visible=false;g.add(top);
   const glow=new THREE.Sprite(new THREE.SpriteMaterial({transparent:true,depthWrite:false,toneMapped:false,depthTest:false,opacity:0}));glow.center.set(.5,0);glow.renderOrder=3;g.add(glow);const shadow=makeShadow();g.add(shadow);
-  const badge=makeBadge();g.add(badge);
-  g.userData={sprite,top,shadow,glow,badge,index,painted:true,phaseOffset:(index%17)*.43,facing:1,lastTexture:null};
+  const cup=new THREE.Group();const mug=new THREE.Mesh(new THREE.CylinderGeometry(.075,.055,.17,14),new THREE.MeshStandardMaterial({color:0xf1e5cd,roughness:.8}));cup.add(mug);const lid=new THREE.Mesh(new THREE.CylinderGeometry(.082,.082,.025,14),new THREE.MeshStandardMaterial({color:0x624833}));lid.position.y=.09;cup.add(lid);const sleeve=new THREE.Mesh(new THREE.CylinderGeometry(.073,.065,.06,14),new THREE.MeshStandardMaterial({color:0x73825e}));cup.add(sleeve);cup.visible=false;g.add(cup);const badge=makeBadge();g.add(badge);
+  g.userData={sprite,top,shadow,glow,cup,badge,index,painted:true,phaseOffset:(index%17)*.43,facing:1,lastTexture:null};
   return g;
 }
 
 export function animatePaintedCustomer(g,phase,mode,now,reducedMotion=false){
-  const d=g.userData,{sprite,top,shadow,index}=d;if(!sprite)return;
-  const seated=phase==='seated',walking=phase==='walking',clock=now*.009+(d.phaseOffset||0);
+  const d=g.userData,{sprite,top,shadow,index}=d;if(!sprite)return;if(d.cup){d.cup.visible=!!d.hasDrink&&phase==='seated'&&['remote','study'].includes(d.customerType);d.cup.position.set(.27,phase==='seated'?(d.seatHeight||.53)+.45:1.03,phase==='seated'?-.38:-.03);}
+  const seated=phase==='seated',walking=phase==='walking',clock=now*.0045+(d.phaseOffset||0);
   const pose=seated?'seated':walking&&!reducedMotion?'walking':'waiting';
   const frame=pose==='walking'?Math.floor((clock/(Math.PI*2)%1+1)%1*12):seated&&!reducedMotion&&Math.sin(now*.0007+index)>.94?1:0;
   const category=categoryFor(d.customerType),action=d.action||'';
@@ -378,7 +357,7 @@ export function animatePaintedCustomer(g,phase,mode,now,reducedMotion=false){
   if(category==='barista')activity=action==='serving'?'serving':'barista';
   else if(seated&&category==='remote')activity='laptop';
   else if(seated&&category==='study')activity='book';
-  else if(d.hasDrink&&!seated)activity='drink';
+  else if(d.hasDrink)activity='drink';
   const assetFrame=activity==='serving'&&!reducedMotion?Math.floor(now/260)%2:frame;
   let seatView='front',seatMirror=1;
   if(seated&&d.seatFacing&&d.cameraDirection){
@@ -398,8 +377,8 @@ export function animatePaintedCustomer(g,phase,mode,now,reducedMotion=false){
   // cannot slide a seated guest behind or below the chair. Signed X scale also
   // mirrors around this same hip, so the anchor does not flip for side poses.
   sprite.center.set(seated&&seatView==='side'?74/170:.5,seated?89/270:0);
-  sprite.position.y=(seated?(Number.isFinite(d.seatHeight)?d.seatHeight:.53):0)+breathing;
-  sprite.material.rotation=walking&&!reducedMotion?Math.sin(clock)*.018:!reducedMotion&&d.urgency>.35?Math.sin(now*.007+index)*.035*d.urgency:0;
+  sprite.position.y=(seated?(Number.isFinite(d.seatHeight)?d.seatHeight:.53):0)+breathing+(d.sitLift||0);
+  sprite.material.rotation=walking&&!reducedMotion?Math.sin(clock)*.006:0;
   top.position.y=seated?(Number.isFinite(d.seatHeight)?d.seatHeight:.53)+.56:1.34;
   top.scale.set(1,walking&&!reducedMotion?1+Math.sin(clock*2)*.025:1,1);
   if(d.badge){
@@ -411,13 +390,7 @@ export function animatePaintedCustomer(g,phase,mode,now,reducedMotion=false){
       d.badge.scale.set(mode==='bird'?1.02:1.12,mode==='bird'?.32:.35,1);
     }
   }
-  const dt=Math.min(.1,(now-(d.glowTime||now))/1000);d.glowTime=now;
-  const goal=d.warning?1:0;d.glowStrength=(d.glowStrength||0)+(goal-(d.glowStrength||0))*Math.min(1,dt*6);
-  const glow=d.glow;if(glow){glow.visible=d.glowStrength>.01;glow.material.opacity=d.glowStrength*(reducedMotion?.95:.9+Math.sin(now*.005)*.06);glow.material.color.setStyle(`hsl(${Math.max(0,55-(d.urgency||0)*70)},100%,57%)`);if(glow.visible){const map=outlineTexture(mode==='bird'?top.material.map:texture);if(!glow.material.map)glow.material.needsUpdate=true;glow.material.map=map;}glow.scale.set(sprite.scale.x*186/170,sprite.scale.y*286/270,1);
-    // Outline textures add eight pixels on each side of the source frame.
-    glow.center.set((sprite.center.x*170+8)/186,(sprite.center.y*270+8)/286);
-    glow.position.copy(sprite.position);glow.material.rotation=sprite.material.rotation;
-    if(mode==='bird'){glow.center.set(.5,.5);glow.scale.set(.95,.95,1);glow.position.y=top.position.y;glow.material.rotation=0;} }
+  if(d.glow)d.glow.visible=false;
   // Keep the shadow on the floor when the caller raises a guest for a stool.
   shadow.position.y=.026-g.position.y;
   shadow.scale.set(seated?1.1:1,walking&&!reducedMotion?1-Math.abs(Math.sin(clock))*.06:1,1);
