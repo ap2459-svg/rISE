@@ -24,7 +24,7 @@ import {CATALOG,REPAIRS,isTable,walkable,defaultState,migrateState} from './cata
 import {ROOM,ENTRY,clampPlacement,size,insideRoom,overlap,placement,footprint,alignChair,free,chooseSeat,brightness} from './layout.mjs?v=chair-shortcut-31';
 import {paintedPatch} from './painted.mjs?v=chair-shortcut-31';
 import {DAY_KEY,newDay,loadDay,canEdit,recordChange,cafeSnapshot,getFacility,seatsIn,worldObstacles,staticAssessment,baristaEfficiency,WINDOWS,CafeSimulation,PROFILES} from './day.mjs?v=chair-shortcut-31';
-import {createDayUI} from './day-ui.mjs?v=chair-shortcut-31';
+import {createDayUI} from './day-ui.mjs?v=post-survey-1';
 import {setAudio,stopAudio} from './audio.mjs?v=chair-shortcut-31';
 const $=s=>document.querySelector(s),clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),STORAGE=DAY_KEY;
 let state;try{state=loadDay(JSON.parse(localStorage.getItem(STORAGE)),JSON.parse(localStorage.getItem('rise-cafe-painted-v2')))}catch{state=newDay()}

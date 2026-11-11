@@ -1,0 +1,60 @@
+body.rise-post-open { overflow: hidden; }
+#rise-post-survey {
+  box-sizing: border-box;
+  width: min(500px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: #40291c;
+  background: linear-gradient(#fff9ec, #ffedd3);
+  border: 3px solid #69452c;
+  border-radius: 24px;
+  box-shadow: 0 7px 0 #422b1dcc, 0 20px 60px #17251d66;
+  text-align: center;
+}
+#rise-post-survey::backdrop { background: #14271cc4; backdrop-filter: blur(3px); }
+#rise-post-survey .rise-post-content { padding: 24px 28px 20px; }
+#rise-post-survey .rise-post-icon { display: block; width: 52px; height: 52px; margin: 0 auto 10px; color: #456341; }
+#rise-post-survey .rise-post-eyebrow { margin: 0; font: 900 11px/1.4 'Nunito', sans-serif; letter-spacing: 1.5px; color: #526745; }
+#rise-post-title { font: bold clamp(30px, 5vw, 38px)/1.15 'Patrick Hand', Patrick, sans-serif; margin: 7px 0 12px; }
+#rise-post-description { font: 700 16px/1.5 'Nunito', sans-serif; margin: 0; }
+#rise-post-survey .rise-post-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  margin-top: 22px;
+  padding: 10px 20px;
+  font: 900 15px/1.4 'Nunito', sans-serif;
+  border: 2px solid #244c31;
+  border-radius: 13px;
+  background: linear-gradient(#d4ecb6, #a8ce8c);
+  box-shadow: 0 3px #426137;
+  color: #203e29;
+  text-decoration: none;
+}
+#rise-post-survey .rise-post-primary:hover { background: #dbefc8; }
+#rise-post-new-tab { font: 700 12px/1.5 'Nunito', sans-serif; color: #6b5945; margin: 13px 0 12px; }
+#rise-post-survey .rise-post-back, button.rise-post-launcher {
+  box-sizing: border-box;
+  font: 900 15px/1.4 'Nunito', sans-serif;
+  min-height: 44px;
+  padding: 8px 18px;
+  background: #fff2d9;
+  color: #513b28;
+  border: 2px solid #bba181;
+  border-radius: 12px;
+  cursor: pointer;
+}
+#rise-post-survey .rise-post-back:hover, button.rise-post-launcher:hover { background: #f5e1c5; }
+#rise-post-survey a:focus-visible, #rise-post-survey button:focus-visible, button.rise-post-launcher:focus-visible { outline: 3px solid #1875a5; outline-offset: 4px; }
+@media (max-width: 480px), (max-height: 560px) {
+  #rise-post-survey .rise-post-content { padding: 16px 20px; }
+  #rise-post-survey .rise-post-icon { width: 40px; height: 40px; margin-bottom: 6px; }
+  #rise-post-title { font-size: 30px; margin: 5px 0 9px; }
+  #rise-post-description { font-size: 14px; }
+  #rise-post-survey .rise-post-primary { margin-top: 15px; }
+}
