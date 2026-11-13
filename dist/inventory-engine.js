@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const CONFIG = Object.freeze({
-    version:6, days:5, shiftSeconds:75, openingCash:-500, creditLimit:750,
+    version:6, days:5, shiftSeconds:75, planningSeconds:90, openingCash:-500, creditLimit:750,
     openingReputation:20, dailyOverhead:14, overnightSeconds:75,
     patience:12, bakeSeconds:8, bakeBatch:4, bakeConversion:3.4,
     arrivalIntervals:[2.8,2.3,2,1.8,1.3], serviceSeconds:2, seed:19725
@@ -42,16 +42,16 @@
     {id:'sandwich',name:'Breakfast Sandwich',icon:'sandwich',price:5.5,day:3,kind:'bakery',recipe:['Breakfast Sandwich','Bakery Bag','Napkin','Utensil']}
   ];
   const DAYS=[
-    {title:'Reopen the café',chapter:'REOPEN',face:'shop',text:'Five days to save rISE Café. Clear expired stock and choose a supplier to restart coffee service.',goals:['Clear expired stock and use FIFO','Compare suppliers and restock coffee','Serve your first customers'],concept:'Inventory and supply chains',event:'welcome'},
-    {title:'The trending drink',chapter:'FORECAST',face:'trend',text:'Your Oat Milk Cold Brew is trending! Use actual sales to prepare for uncertain demand.',goals:['Inspect demand trends','Choose a forecast, buffer and reorder point','Test the cold brew special'],concept:'Forecasting and safety stock',event:'oat'},
-    {title:'The bakery decision',chapter:'MAKE OR BUY',face:'croissant',text:'Baking and drinks share staff time. Choose how to supply pastries and where your limited money helps most.',goals:['Choose make, buy or hybrid','Plan staff and equipment capacity','Compare an improvement with keeping cash'],concept:'Make-or-buy and resource allocation',event:'oven'},
-    {title:'Price it right',chapter:'PRICE LAB',face:'menu',text:'A higher price earns more per drink, but some customers may walk away. Find your balance.',goals:['Confirm two drink prices','Compare unit costs and margins','Observe customer response'],concept:'Engineering economics',event:'price'},
-    {title:'The festival finale',chapter:'THE COMEBACK',face:'shop',text:'Festival traffic is coming, and the landlord visits tonight. Use what you learned to save the café.',goals:['Use results to improve your stock plan','Prepare capacity for the rush','Balance service, profit and waste'],concept:'Systems thinking and continuous improvement',event:'rush'}
+    {title:'Reopen the café',chapter:'REOPEN',face:'shop',text:'Clear expired stock and restock to reopen the café.',goals:['Discard expired stock; use older stock first','Compare suppliers and restock coffee','Serve your first customers'],concept:'Inventory and supply chains',event:'welcome'},
+    {title:'The trending drink',chapter:'FORECAST',face:'trend',text:'Use sales trends to plan Oat Milk Cold Brew stock.',goals:['Inspect demand trends','Choose a forecast, buffer and reorder point','Test the cold brew special'],concept:'Forecasting and safety stock',event:'oat'},
+    {title:'The bakery decision',chapter:'MAKE OR BUY',face:'croissant',text:'Baking shares staff time with drinks; choose how to stock pastries.',goals:['Choose make, buy or hybrid','Plan staff and equipment capacity','Compare an improvement with keeping cash'],concept:'Make-or-buy and resource allocation',event:'oven'},
+    {title:'Price it right',chapter:'PRICE LAB',face:'menu',text:'Higher prices raise profit per drink but may lose customers.',goals:['Confirm two drink prices','Compare unit costs and margins','Observe customer response'],concept:'Engineering economics',event:'price'},
+    {title:'The festival finale',chapter:'THE COMEBACK',face:'shop',text:'Prepare for festival traffic before the final results tonight.',goals:['Use results to improve your stock plan','Prepare capacity for the rush','Balance service, profit and waste'],concept:'Systems thinking and continuous improvement',event:'rush'}
   ];
   const UPGRADES=[
     {id:'fridge',name:'Better refrigerator',icon:'fridge',cost:45,day:2,effect:'New milk and fresh bakery last 50% longer.'},
     {id:'storage',name:'Organized shelving',icon:'shelf',cost:30,day:2,effect:'50% more storage; easier FIFO rotation.'},
-    {id:'tracker',name:'Stockroom Assistant',icon:'trend',cost:18,day:1,effect:'One-time unlock: urgent express auto-purchases for empty menu supplies, plus low-stock alerts. Goods and express fees cost extra.'},
+    {id:'tracker',name:'Stockroom Assistant',icon:'trend',cost:18,day:1,effect:'Unlock urgent express purchases and low-stock alerts; goods and express fees cost extra.'},
     {id:'contract',name:'Supplier partnership',icon:'contract',cost:38,day:2,effect:'+10 points supplier reliability, up to 100%.'},
     {id:'oven',name:'Second bakery rack',icon:'oven',cost:48,day:3,effect:'Two batches at once; baking takes 5 seconds.'},
     {id:'ordering',name:'Combined ordering',icon:'menu',cost:26,day:3,effect:'Half the shipping fees; 5 seconds off lead times.'},
@@ -68,6 +68,8 @@
   });
   class InventorySim {
     constructor(seed=Date.now()) {
+      // Runtime deadlines are monotonic and never serialized across page loads.
+      Object.defineProperty(this,'_planningDeadline',{value:null,writable:true});
       this.seed=(Number(seed)>>>0)||CONFIG.seed;
       this.day=1; this.clock=0; this.cash=CONFIG.openingCash; this.creditLimit=CONFIG.creditLimit;
       this.reputation=CONFIG.openingReputation; this.lots=Object.fromEntries(ITEMS.map(i=>[i.name,[]]));
@@ -100,10 +102,10 @@
     planProblem() {
       if(!this.lesson.plan)return 'Complete today’s required operations plan before opening.';
       if(this.day===1&&!this.learning.legacyFIFO&&!this.learning.events.some(e=>e.kind==='fifo'))return 'Unpack a delivery with older stock in front before opening.';
-      if(this.day===1&&!this.deliveries.some(d=>!d.cancelled&&d.learningDay===1&&d.supplier===this.lesson.plan.supplier))return 'Place an order with your chosen supplier so you can evaluate the delivery.';
-      if(this.day===2&&(!this.menu.oat.enabled||this.servings('oat')<1))return 'Prepare at least one Oat Milk Cold Brew and put it on the menu. Same-day deliveries arrive while you prepare. Budget standard orders arrive tomorrow; choose a same-day supplier or express shipping for ingredients needed today.';
-      if(this.day===3&&!MENU.some(p=>p.kind==='bakery'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'Put a stocked bakery item on the menu to test your make-or-buy strategy. Bake frozen portions or order ready-made stock.';
-      if(this.day===4&&!['latte','oat'].some(id=>this.menu[id].enabled&&this.servings(id)>0))return 'Stock and enable at least one of the drinks you priced so customers can respond to your decision.';
+      if(this.day===1&&!this.deliveries.some(d=>!d.cancelled&&d.learningDay===1&&d.supplier===this.lesson.plan.supplier))return 'Place an order with your planned supplier.';
+      if(this.day===2&&(!this.menu.oat.enabled||this.servings('oat')<1))return 'Stock and enable Oat Milk Cold Brew; use a same-day supplier or express shipping to open today. Budget standard arrives tomorrow.';
+      if(this.day===3&&!MENU.some(p=>p.kind==='bakery'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'Stock a bakery item and add it to Menu; bake frozen portions or buy ready-made.';
+      if(this.day===4&&!['latte','oat'].some(id=>this.menu[id].enabled&&this.servings(id)>0))return 'Stock and enable at least one drink you priced.';
       return null;
     }
     commitPlan(p) {
@@ -124,7 +126,7 @@
       if([3,5].includes(this.day)&&!['helper','focus','buffer'].includes(p.capacity))return 'Choose a rush capacity strategy.';
       if([3,5].includes(this.day)&&!['fridge','storage','energy','hold'].includes(p.investment))return 'Compare improvements and choose one, or preserve cash.';
       if([3,5].includes(this.day)&&!['waste','capacity','cash'].includes(p.reason))return 'Choose the operational reason for your investment decision.';
-      if(p.capacity==='buffer'&&p.buffer===0)return 'A buffer strategy needs at least one extra unit. Otherwise choose a helper or focused menu.';
+      if(p.capacity==='buffer'&&p.buffer===0)return 'Set extra stock to at least 1, or choose a helper or focused menu.';
       const upgrade=UPGRADES.find(u=>u.id===p.investment&&!this.upgrades.includes(u.id));
       const cost=(upgrade?.cost||0)+([3,5].includes(this.day)&&p.capacity==='helper'&&!this.helper?22:0);
       if(cost>this.spendable)return 'This plan exceeds available cash and credit. Choose another strategy.';
@@ -147,11 +149,11 @@
       const r=this.reports.find(r=>r.day===this.day);if(!r)return null;
       const sold=r.served,loss=r.lostSales||0,waste=r.waste||0;
       const checks={
-        1:{topic:'FIFO and waste prevention',prompt:'You placed older usable stock in front of a new delivery. Why does that help the café?',options:[['fifo','It helps use stock before it expires'],['speed','It makes the coffee machine work faster'],['price','It automatically raises selling prices']],correct:'fifo',explanation:'Using older usable stock first is FIFO. It reduces the chance of ingredients expiring unused.'},
-        2:{topic:'Forecasting and safety stock',prompt:loss>0?'Your café missed $'+loss.toFixed(2)+' in possible sales. If unexpected demand causes a shortage, what can help?':'You served '+sold+' customers. How can you prepare for a popular drink without knowing exactly who will arrive?',options:[['maximum','Fill every shelf to its maximum'],['buffer','Use recent demand and keep a small stock buffer'],['guess','Ignore sales trends and repeat the same order']],correct:'buffer',explanation:'Forecasts use past demand; safety stock covers some uncertainty. Too much extra stock still costs money and can expire.'},
-        3:{topic:'Make-or-buy and capacity',prompt:this.lesson.plan?.strategy==='inhouse'?'Your plan kept baking in-house. Which cost belongs in that decision?':'Your bakery plan used '+(this.lesson.plan?.strategy==='outsource'?'outsourcing':'a mix of making and buying')+'. What tradeoff matters?',options:[['free','Supplier deliveries remove all costs and risks'],['cost','Compare purchase costs with labor, oven time and delivery risk'],['unlimited','More bakery choices always create unlimited capacity']],correct:'cost',explanation:'Making and buying use different resources. Outsourcing frees staff and ovens but can cost more and creates supplier dependence.'},
-        4:{topic:'Engineering economics',prompt:r.priceLost>0?r.priceLost+' customers declined a price today. How should you evaluate your prices?':'Your café earned $'+r.revenue.toFixed(2)+' in sales today. What should you compare when testing a new price?',options:[['highest','Choose the highest selling price every time'],['volume','Look only at the number of drinks sold'],['profit','Compare total profit, costs and customer response']],correct:'profit',explanation:'A larger margin per drink does not guarantee more total profit. Price affects both demand and earnings.'},
-        5:{topic:'Systems thinking',prompt:loss>waste?'Your final shift missed $'+loss.toFixed(2)+' in possible revenue. Why should a new plan consider suppliers, stock and service together?':'Across five days, stock, prices and capacity affected your results. Why consider these decisions together?',options:[['system','Changes in one part affect other parts of the café'],['cheap','The cheapest choice is always best for the whole café'],['stock','Buying more ingredients fixes every operational problem']],correct:'system',explanation:'ISE improves the whole system. Use results to balance availability, capacity, cost and customer experience, then test an improvement.'}
+        1:{topic:'FIFO and waste prevention',prompt:'Why put older usable stock in front?',options:[['fifo','It helps use stock before it expires'],['speed','It makes the coffee machine work faster'],['price','It automatically raises selling prices']],correct:'fifo',explanation:'FIFO means using older stock first to reduce waste.'},
+        2:{topic:'Forecasting and safety stock',prompt:loss>0?'Your café missed $'+loss.toFixed(2)+' in possible sales. If unexpected demand causes a shortage, what can help?':'You served '+sold+' customers. How can you prepare for a popular drink without knowing exactly who will arrive?',options:[['maximum','Fill every shelf to its maximum'],['buffer','Use recent demand and keep a small stock buffer'],['guess','Ignore sales trends and repeat the same order']],correct:'buffer',explanation:'Use past demand and a small buffer; extra stock costs money and can expire.'},
+        3:{topic:'Make-or-buy and capacity',prompt:this.lesson.plan?.strategy==='inhouse'?'Your plan kept baking in-house. Which cost belongs in that decision?':'Your bakery plan used '+(this.lesson.plan?.strategy==='outsource'?'outsourcing':'a mix of making and buying')+'. What tradeoff matters?',options:[['free','Supplier deliveries remove all costs and risks'],['cost','Compare purchase costs with labor, oven time and delivery risk'],['unlimited','More bakery choices always create unlimited capacity']],correct:'cost',explanation:'Outsourcing frees staff and ovens but may cost more and relies on suppliers.'},
+        4:{topic:'Engineering economics',prompt:r.priceLost>0?r.priceLost+' customers declined a price today. How should you evaluate your prices?':'Your café earned $'+r.revenue.toFixed(2)+' in sales today. What should you compare when testing a new price?',options:[['highest','Choose the highest selling price every time'],['volume','Look only at the number of drinks sold'],['profit','Compare total profit, costs and customer response']],correct:'profit',explanation:'Higher profit per drink can mean fewer sales; compare total profit.'},
+        5:{topic:'Systems thinking',prompt:loss>waste?'Your final shift missed $'+loss.toFixed(2)+' in possible revenue. Why should a new plan consider suppliers, stock and service together?':'Across five days, stock, prices and capacity affected your results. Why consider these decisions together?',options:[['system','Changes in one part affect other parts of the café'],['cheap','The cheapest choice is always best for the whole café'],['stock','Buying more ingredients fixes every operational problem']],correct:'system',explanation:'Use results to balance stock, staffing, cost and customer experience.'}
       };
       return {...checks[this.day],loss,waste,profit:r.profit};
     }
@@ -186,6 +188,7 @@
       this.rewards[key]=true; this.badges.push(title); this.xp+=points; return true;
     }
     beginDay() {
+      this._planningDeadline=null; this.planningRemaining=CONFIG.planningSeconds;
       this.phase='planning'; this.running=false; this.elapsed=0; this.pendingEvent=null; this.eventSeen=false;
       this.briefed=false; this.orders=[]; this.helper=false; this.discount=false; this.promotion=null;
       this.ovenBroken=false; this.slowOven=false; this.safetyAlert=false; this.metrics=newMetrics();
@@ -240,7 +243,7 @@
       for(const {name,lot} of lots) if(lot.expires<=this.day&&!lot.written) {
         lot.written=true; const cost=lot.qty*lot.cost; this.metrics.waste+=cost; this.metrics.wasteUnits+=lot.qty;
         this.metrics.wasteByItem[name]=(this.metrics.wasteByItem[name]||0)+cost; this.safetyAlert=true;
-        this.say(`${name} expired. Remove it from the shelf; try a smaller order next time.`);
+        this.say(`${name} expired; discard it and consider ordering less.`);
       }
     }
     discard(name,lotId=null) {
@@ -253,7 +256,7 @@
       }
       const ids=new Set(removed.map(l=>l.id)); this.lots[name]=this.lots[name].filter(l=>!ids.has(l.id));
       const count=sum(removed.map(l=>l.qty)); this.metrics.cleared+=count;
-      if(count&&!this.expiredCount()) { this.safetyAlert=false; this.earn('cleanup','Fresh start'); this.say('Safe shelves! Expired food is never served.'); }
+      if(count&&!this.expiredCount()) { this.safetyAlert=false; this.earn('cleanup','Fresh start'); this.say('Expired stock cleared.'); }
       return count;
     }
     consume(name,qty=1,frozen=false) {
@@ -269,7 +272,7 @@
     rotate(name) {
       if(!BY_NAME[name]) return;
       this.lots[name].sort((a,b)=>(a.received??0)-(b.received??0)||a.id-b.id); this.earn('fifo','First in, first out');
-      this.lastExplanation='Older stock is now at the front. FIFO helps you sell it before it expires.';
+      this.lastExplanation='Older stock moved to the front (FIFO).';
     }
     /* Suppliers: quote first, then sample delivery risk once at checkout. */
     supplier(id) { return SUPPLIERS.find(s=>s.id===id&&s.unlock<=this.day); }
@@ -329,7 +332,7 @@
       }
       this.learning.events.push({kind:'purchase',day:this.day,clock:this.clock,cart:clone(cart),goods:quote.goods,shipping:quote.shipping,total:quote.total});
       this.tutorial.ordered=true; this.earn('order','Supply chain started');
-      this.say('Order placed. Credit pays for stock now; sold or wasted stock becomes a product expense.');
+      this.say('Order placed; stock becomes an expense when sold or wasted.');
       return null;
     }
     processDeliveries() {
@@ -339,7 +342,7 @@
           const delay=d.eta-d.expected;d.expected=this.clock;d.eta=this.clock+delay;d.nextMorning=false;
         }
         if(d.delayed&&this.clock>=d.expected&&!d.delayNotified) {
-          d.delayNotified=true; this.say(`${d.name} is late. Safety stock buys you time while you wait.`);
+          d.delayNotified=true; this.say(`${d.name} is late; use your extra stock while waiting.`);
         }
         if(this.clock<d.eta) continue;
         d.arrived=true; this.metrics.deliveries++; this.metrics.onTime+=!d.delayed?1:0; this.metrics.correct+=!d.error?1:0;
@@ -352,7 +355,7 @@
         }
         d.lines=d.lines.filter(l=>l.qty>0);
         for(const l of d.lines) l.expires=this.day+l.life;
-        this.say(`Supplies arrived from ${d.name}! Place older products in front.`);
+        this.say(`${d.name} arrived; place older stock in front.`);
       }
       this.manageOutsourcedBakery();this.collectRoutineDeliveries();
     }
@@ -368,8 +371,8 @@
         this.lots[l.name].sort((a,b)=>((a.received??0)-(b.received??0)||a.id-b.id));
       }
       d.shelved=true; this.tutorial.shelved=true;
-      if(fifo) { this.learning.events.push({kind:'fifo',day:this.day,delivery:id}); this.earn('fifo','First in, first out'); this.lastExplanation='Older products in front: fewer items expire before you can sell them. That is FIFO.'; }
-      else this.lastExplanation='Delivery stored. Older stock stays in front so it is used first.';
+      if(fifo) { this.learning.events.push({kind:'fifo',day:this.day,delivery:id}); this.earn('fifo','First in, first out'); this.lastExplanation='Stock stored with older items in front (FIFO).'; }
+      else this.lastExplanation='Delivery stored; older stock stays in front.';
       return true;
     }
     tutorialStep() {
@@ -379,16 +382,19 @@
       if(!t.inspected)return 'inspect';
       if(this.expiredCount())return 'clean';
       if(!t.missing)return 'missing';
-      if(!t.suppliersOpened)return 'suppliers';
-      if(t.compared.length<2)return 'compare';
-      if(!t.cartAdded)return 'cart';
-      if(!t.reviewed)return 'review';
-      if(!t.ordered)return 'order';
-      if(!t.shelved)return 'delivery';
       if(!t.menuSeen)return 'menu';
       if(!t.recipeSeen)return 'recipe';
-      if(!t.trendsSeen)return 'trends';
+      if(!t.cartAdded&&!t.ordered)return 'cart';
+      if(!t.suppliersOpened)return 'suppliers';
+      if(t.compared.length<2)return 'compare';
+      if(!this.lesson.plan)return 'plan';
+      if(!t.reviewed)return 'review';
+      if(!t.ordered)return 'order';
+      // A cancelled or tomorrow-only order must not trap the guide at the dock.
+      if(this.deliveries.some(d=>!d.cancelled&&!d.shelved&&d.dueDay<=this.day))return 'delivery';
       if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'restock';
+      if(this.planProblem())return 'restock';
+      if(!t.trendsSeen)return 'trends';
       return 'ready';
     }
     completeTutorial() {
@@ -471,10 +477,10 @@
       if(!Array.isArray(cart)||(cart.length&&!this.quote(cart)))return {error:'Review invalid cart quantities before using urgent restock.'};
       const plan=this.urgentStockoutPlan(size);
       if(!plan)return {error:'Unlock the Stockroom Assistant and order during preparation or a shift.'};
-      if(!plan.lines.length)return {error:'No urgent order is needed. Usable stock and arriving deliveries already cover empty menu supplies.'};
-      if(plan.blocked||plan.unfilled)return {error:plan.blocked||'Not enough storage for a full urgent order. Free space or order smaller quantities manually.'};
+      if(!plan.lines.length)return {error:'Usable stock and incoming deliveries cover empty menu supplies.'};
+      if(plan.blocked||plan.unfilled)return {error:plan.blocked||'Free storage or order smaller quantities manually.'};
       if(!this.tutorial.urgentRestockExplained&&!acknowledge)return {error:'Review the express-delivery explanation before the first urgent purchase.'};
-      if(plan.quote.total>this.spendable)return {error:'Not enough cash or credit for this urgent order. Reduce quantities with manual ordering.'};
+      if(plan.quote.total>this.spendable)return {error:'Not enough cash or credit; order smaller quantities manually.'};
       for(const l of plan.lines)if(this.spoiled(l.name))this.discard(l.name);
       const error=this.placeOrder(plan.lines);if(error)return {error};
       this.tutorial.urgentRestockExplained=true;
@@ -674,15 +680,15 @@
     eventData() {
       const kind=this.info.event;
       const data={
-        welcome:{title:'Our first regular is back!',text:'A customer wants to bring the robotics club for coffee. Can your milk, cups and coffee stock keep up?',choices:[['promote','Feature Vanilla Latte','More coffee orders; keep a small buffer.'],['steady','Keep a small menu','A calmer start while we learn.']]},
+        welcome:{title:'Our first regular is back!',text:'The robotics club may visit; check milk, cups and coffee.',choices:[['promote','Feature Vanilla Latte','More coffee orders; keep a small buffer.'],['steady','Keep a small menu','A calmer start while we learn.']]},
         discount:{title:'A bargain with a catch',text:'Budget Beans offers 10% off for the rest of today. Their delivery reliability stays the same.',choices:[['deal','Take the discount','Cheaper orders; same risk.'],['steady','Stick to the plan','Protect the supply chain you trust.']]},
         oat:{title:'Oat Milk Cold Brew is trending!',text:'Requests are climbing. Extra stock could help, but leftovers still expire.',choices:[['emergency','Express oat kit · $14','8 oat milk, 8 cold brew, 8 straws; 2s.'],['alternative','Promote Vanilla Latte','Shift demand to the original menu.'],['hide','Pause the oat special','Fewer choices; preserve other supplies.']]},
-        oven:{title:'The oven is acting up',text:'The thermostat failed between batches. How should we keep the pastry case stocked?',choices:[['repair','Repair it · $12','Keep baking here today.'],['outsource','Use the local bakery','Buy ready-made; no oven work.'],['hybrid','Work around it','Slower batches; mix make and buy.']]},
-        price:{title:'“We’re on a student budget”',text:'Maya suggests a value special. You can test it without permanently changing every price.',choices:[['value','Vanilla Latte: 10% off','Lower margin; better price acceptance.'],['quality','Keep prices; explain quality','Protect margins and watch reactions.']]},
-        rush:{title:'The festival crowd is here!',text:'Keep the system moving. An express buffer costs money; a focused menu reduces complexity.',choices:[['emergency','Express oat kit · $14','8 oat milk, 8 cold brew, 8 straws; 2s.'],['alternative','Promote Vanilla Latte','Use a different set of ingredients.'],['focus','Focus the drink menu','Offer only your best-stocked drink.']]},
-        final:{title:'The neighborhood is watching',text:'The landlord arrives tonight. Invite a few more neighbors, or focus on serving the people already here.',choices:[['invite','Community invite · $10','More traffic for the rest of the shift.'],['steady','Make every order count','Keep the current pace.']]}
+        oven:{title:'The oven is acting up',text:'The oven broke; choose how to supply pastries.',choices:[['repair','Repair it · $12','Keep baking here today.'],['outsource','Use the local bakery','Buy ready-made; no oven work.'],['hybrid','Work around it','Slower batches; mix make and buy.']]},
+        price:{title:'“We’re on a student budget”',text:'Test a temporary value special without changing every price.',choices:[['value','Vanilla Latte: 10% off','Lower margin; better price acceptance.'],['quality','Keep prices; explain quality','Protect margins and watch reactions.']]},
+        rush:{title:'The festival crowd is here!',text:'Buy express stock or simplify the menu for the rush.',choices:[['emergency','Express oat kit · $14','8 oat milk, 8 cold brew, 8 straws; 2s.'],['alternative','Promote Vanilla Latte','Use a different set of ingredients.'],['focus','Focus the drink menu','Offer only your best-stocked drink.']]},
+        final:{title:'The neighborhood is watching',text:'Invite more customers or keep the current pace.',choices:[['invite','Community invite · $10','More traffic for the rest of the shift.'],['steady','Make every order count','Keep the current pace.']]}
       };
-      if(kind==='oven'&&this.strategy==='outsource')return {kind,title:'Your bakery partner has production covered',text:'Baking and freshness are handled by your bakery. Which products should the café feature?',choices:[['promote','Feature coffee','More latte requests; keep milk and cups stocked.'],['bakery-promo','Feature pastries','More bakery add-ons; watch ready stock and bags.']]};
+      if(kind==='oven'&&this.strategy==='outsource')return {kind,title:'Your bakery partner has production covered',text:'The bakery handles production and freshness; choose what to feature.',choices:[['promote','Feature coffee','More latte requests; keep milk and cups stocked.'],['bakery-promo','Feature pastries','More bakery add-ons; watch ready stock and bags.']]};
       return {...data[kind],kind};
     }
     chooseEvent(choice) {
@@ -697,30 +703,30 @@
         this.cash-=14; this.metrics.purchases+=goods; this.metrics.operating+=14-goods;
         this.deliveries.push({id:++this.serial,supplier:'quick',name:'QuickShip emergency',placed:this.clock,expected:this.clock+2,eta:this.clock+2,dueDay:this.day,reliability:1,delayed:false,error:false,arrived:false,shelved:false,notified:false,
           lines:cart.map(([name,qty])=>({name,qty,cost:BY_NAME[name].cost,quality:.94,life:BY_NAME[name].life,frozen:false,written:false}))});
-        this.lastExplanation='Emergency shipping protects sales, but its fee reduces profit. A safety buffer can cost less.';
+        this.lastExplanation='Express shipping protects sales but adds delivery costs.';
       }
       if(choice==='repair'&&!this.spendOperating(12)) return 'Not enough available credit for the repair.';
       if(choice==='invite'&&!this.spendOperating(10)) return 'Not enough available credit for an invitation.';
-      if(choice==='promote') { this.promotion='latte'; this.lastExplanation='A coffee special brings more drink requests. Check milk and cups before promising more than you can serve.'; }
+      if(choice==='promote') { this.promotion='latte'; this.lastExplanation='More latte requests: check milk and cups.'; }
       if(choice==='deal') this.discount=true;
-      if(choice==='bakery-promo'){this.promotion='cookie';this.lastExplanation='Outsourcing frees production capacity and removes freshness work, but pastry stock, bags and purchasing costs still matter.';}
+      if(choice==='bakery-promo'){this.promotion='cookie';this.lastExplanation='More pastry requests: check ready-made stock, bags and available money.';}
       if(choice==='alternative') {
         this.promotion='latte'; this.menu.latte.enabled=true; this.menu.oat.enabled=false;
         this.substituteWaiting('oat','latte');
-        this.lastExplanation='Waiting cold-brew customers were offered a latte. Some accept; others leave. Substitution protects service but changes what you sell.';
+        this.lastExplanation='Waiting cold-brew customers were offered a latte; some accept, others leave.';
       }
       if(choice==='hide') { this.menu.latte.enabled=true; this.menu.oat.enabled=false; }
       if(choice==='focus') {
         const best=MENU.filter(p=>p.kind==='drink'&&p.day<=this.day).sort((a,b)=>this.servings(b.id)-this.servings(a.id))[0];
         for(const p of MENU.filter(p=>p.kind==='drink')) this.menu[p.id].enabled=p.id===best.id;
-        this.lastExplanation='A focused menu needs fewer ingredients. Some customers will miss the variety.';
+        this.lastExplanation='Fewer menu items need fewer ingredients but may lose customers.';
       }
       if(choice==='outsource') { this.setStrategy('outsource'); this.ovenBroken=true; }
       if(choice==='hybrid') { this.strategy='hybrid'; this.ovenBroken=false; this.slowOven=true; }
       if(choice==='repair') { this.ovenBroken=false; this.slowOven=false; }
       if(choice==='value') this.menu.latte.price=Math.round(MENU[0].price*.9*4)/4;
       if(choice==='invite') this.promotion='invite';
-      if(!this.lastExplanation) this.lastExplanation='Watch the next sales and waste results. Improving a system means testing a decision, then adjusting.';
+      if(!this.lastExplanation) this.lastExplanation='Check sales and waste to judge this choice.';
       this.earn(`decision-${this.day}`,'Rescue decision',15); this.pendingEvent=null; return null;
     }
     servings(id) { const p=MENU.find(p=>p.id===id); return p?Math.min(...p.recipe.map(n=>this.stock(n))):0; }
@@ -729,6 +735,17 @@
       this.quizAnswered=true; const correct=answer==='buffer';
       if(correct) this.earn(`reflection-${this.day}`,'Engineer’s reflection',10);
       return correct;
+    }
+    /* Real preparation time is independent of simulation speed and logistics jumps.
+       Dialogs, hidden tabs and leaving the mode intentionally pause both clocks. */
+    planningTimeLeft(now=performance.now()) {
+      return this.phase==='planning'?Math.max(0,this._planningDeadline===null?this.planningRemaining:(this._planningDeadline-now)/1000):0;
+    }
+    resumePlanningClock(now=performance.now()) {
+      if(this.phase==='planning'&&this._planningDeadline===null)this._planningDeadline=now+this.planningRemaining*1000;
+    }
+    pausePlanningClock(now=performance.now()) {
+      this.planningRemaining=this.planningTimeLeft(now); this._planningDeadline=null;
     }
     /* Campaign clock: planning advances logistics only; the live shift advances everything. */
     open() {
@@ -740,7 +757,8 @@
       if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0)) return 'Stock at least one complete drink recipe before opening.';
       const overhead=CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0);
       if(!this.spendOperating(overhead)) return `Keep $${overhead} available for today’s rent, power and staff.`;
-      this.phase='shift'; this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
+      this.phase='shift'; this.planningRemaining=0; this._planningDeadline=null;
+      this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
     }
     tickPlanning(seconds) {
       if(this.phase!=='planning'||!Number.isFinite(seconds)||seconds<=0)return;
@@ -782,7 +800,7 @@
       if(this.metrics.menuLost>=2&&!lost) return `${this.metrics.menuLost} customers wanted more variety. Try adding one well-stocked drink while protecting service speed.`;
       if(lost&&(!waste||lost[1]>waste[1])) return `$${lost[1].toFixed(2)} in missed sales: ${lost[0]}. A small safety buffer or more capacity could help.`;
       if(waste&&waste[1]>2) return `$${waste[1].toFixed(2)} of ${waste[0]} was wasted. Buy smaller batches and move older stock forward.`;
-      return 'A stable shift. Keep watching actual demand before expanding the menu.';
+      return 'Check demand before expanding the menu.';
     }
     finish() {
       if(this.phase!=='shift') return false;
@@ -828,8 +846,9 @@
         turnover:sum(this.reports.map(r=>r.cogs))/Math.max(1,sum(this.reports.map(r=>r.averageInventory))/CONFIG.days)};
     }
     /* Versioned, mode-specific saves. Resume always pauses to orient the player. */
-    save() {
-      const data=clone(this); data.running=false; return JSON.stringify({version:CONFIG.version,state:data});
+    save(now=performance.now()) {
+      const data=clone(this); data.planningRemaining=this.planningTimeLeft(now);
+      data.running=false; return JSON.stringify({version:CONFIG.version,state:data});
     }
     static restore(serialized) {
       try {
@@ -860,6 +879,9 @@
         if(ITEMS.some(i=>!Array.isArray(s.lots[i.name])||s.lots[i.name].some(l=>!Number.isInteger(l.qty)||l.qty<0||l.cost<0||typeof l.expires!=='number'))) return null;
         if(MENU.some(p=>!s.menu[p.id]||typeof s.menu[p.id].enabled!=='boolean'||!Number.isFinite(s.menu[p.id].price)||s.menu[p.id].price<p.price*.5||s.menu[p.id].price>p.price*1.8)) return null;
         if(s.deliveries.some(d=>!Array.isArray(d.lines)||d.lines.some(l=>!BY_NAME[l.name]||!Number.isInteger(l.qty)||l.qty<0))) return null;
+        // Existing version-6 campaigns gain a timer without losing their progress.
+        if(!Object.hasOwn(s,'planningRemaining'))s.planningRemaining=s.phase==='planning'?CONFIG.planningSeconds:0;
+        if(!Number.isFinite(s.planningRemaining)||s.planningRemaining<0||s.planningRemaining>CONFIG.planningSeconds)return null;
         const game=new InventorySim(s.seed);
         if(Object.keys(game).some(key=>!Object.hasOwn(s,key))) return null;
         for(const key of Object.keys(game)) if(Object.hasOwn(s,key)) game[key]=s[key];

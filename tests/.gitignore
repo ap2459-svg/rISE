@@ -1,2 +1,3 @@
 # Generated Café Rescue browser scenarios. Never ship test saves.
 .rescue-qa-*.html
+.rescue-tutorial-*.png
