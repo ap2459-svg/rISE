@@ -67,7 +67,30 @@
     return i&&['coffee','milk','syrup','topping'].includes(i.group)?ingredientIcon(i.group,name==='Almond Milk'?'Almond':name):uiIcon(i?.icon||'cup');
   }
   const drinkArt=p=>p.kind==='bakery'?productArt(p.name):'<img class="cr-coffee-image" src="assets/caramel-coffee.png" alt="">';
-  const customerArt=(n=0)=>`<span class="cr-customer-art" style="--person:${Number(n)%3}" aria-hidden="true"></span>`;
+  // Reuse Barista's illustrated cast and expression overlays without changing its renderer.
+  function customerArt(n=0,emotion='happy',slot='feedback') {
+    const face=Math.abs(Math.trunc(Number(n)||0))%3;
+    const mood=['happy','pleased','neutral','disappointed'].includes(emotion)?emotion:'neutral';
+    const art=illustratedCharacter(face).replace(/id="/g,`id="cr-${slot}-`).replace(/url\(#/g,`url(#cr-${slot}-`);
+    return `<span class="cr-customer-art" data-emotion="${mood}" aria-hidden="true">${art}</span>`;
+  }
+  function latestReaction() {
+    const reaction=game.reactions[0];if(!reaction)return null;
+    const order=game.orders.find(o=>o.id===reaction.id),loss=game.alerts.losses.find(l=>l.id===reaction.id);
+    const tone=loss?'unavailable':reaction.emotion==='disappointed'?'disappointed':reaction.emotion==='happy'?'happy':'neutral';
+    const label=loss?'Left · missing supplies':order?.status==='lost'?'Left without buying':order?.status==='served'?(reaction.emotion==='happy'?'Satisfied customer':'Served · mixed feedback'):'Customer reaction';
+    return {...reaction,tone,label:!order?`Last shift · ${label.toLowerCase()}`:label,missing:loss?.missing||[]};
+  }
+  function reactionBubble(reaction,slot) {
+    return `<div class="cr-reaction cr-reaction--${reaction.tone}" data-reaction-id="${esc(reaction.id)}">
+      ${customerArt(reaction.face,reaction.emotion,slot)}<div class="cr-speech"><span class="cr-reaction-label">${esc(reaction.label)}</span><b>${esc(reaction.name)}</b><p>“${esc(reaction.text)}”</p>${reaction.missing.length?`<small>Missing: ${esc(reaction.missing.join(', '))}</small>`:''}</div></div>`;
+  }
+  function serviceWindow() {
+    const reaction=latestReaction();
+    return `<aside class="cr-backroom" aria-label="Café service window"><div class="cr-service-window"><div class="cr-service-sign">From the café</div>
+      <div class="cr-service-view">${reaction?reactionBubble(reaction,'window'):`<div class="cr-service-empty">${uiIcon('cup')}<b>${game.phase==='planning'?'Preparing to open':'Waiting for feedback'}</b><p>${game.phase==='planning'?'Staff serve automatically when you open.':'Customer reactions appear after actual orders.'}</p></div>`}</div>
+      <div class="cr-window-sill">${reaction?'Latest recorded reaction':'Service window'}</div></div><div class="cr-backroom-fixtures" aria-hidden="true"></div></aside>`;
+  }
   function rating(value=game.rating) {
     const v=Math.max(0,Math.min(5,value));
     return `<span class="cr-rating" role="img" aria-label="${v.toFixed(1)} out of 5 stars"><span class="cr-stars">${Array.from({length:5},(_,i)=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 6 7 .9-5 4.9 1.3 7-6.3-3.4-6.3 3.4 1.3-7-5-4.9L9 8z" fill="${i<v-.25?'#ffc53e':'#e4ded3'}" stroke="#785229" stroke-width="1.5"/></svg>`).join('')}</span><b>${v.toFixed(1)}/5</b></span>`;
@@ -358,8 +381,14 @@
     $('.cr-game').dataset.level=game.visualLevel;
     document.querySelectorAll('.cr-nav [data-tab]').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
     patch('#cr-guide',guide());$('#cr-guide').hidden=!guide();
+    const previousStock=new Map([...document.querySelectorAll('.cr-stock-item[data-stock-count]')].map(n=>[n.dataset.product,Number(n.dataset.stockCount)]));
     const html=tab==='stock'?stockroom():tab==='supply'?supplies():tab==='menu'?menuView():trends();
-    patch('#cr-workspace',html);highlightTour();
+    patch('#cr-workspace',html);
+    document.querySelectorAll('.cr-stock-item[data-stock-count]').forEach(n=>{
+      const before=previousStock.get(n.dataset.product),after=Number(n.dataset.stockCount);
+      if(before!==undefined&&before!==after)n.classList.add(after>before?'cr-stock-increased':'cr-stock-decreased');
+    });
+    highlightTour();
   }
   function stockroom() {
     const expiring=game.expiringItems(),care=INVENTORY_ITEMS.filter(i=>game.spoiled(i.name)||expiring.some(e=>e.name===i.name));
@@ -367,13 +396,13 @@
     if(!products.length)products=INVENTORY_ITEMS.filter(i=>game.activeIngredients().includes(i.name)).slice(0,6);
     return `<div class="cr-work-title"><div><span class="cr-kicker">CHECK YOUR STOCK</span><h1>Your stockroom</h1></div><span class="cr-health">${game.health}% stock health</span></div>
       <div class="cr-category-tabs" role="group" aria-label="Stock categories">${Object.entries(labels).map(([id,label])=>btn('category',label,'',`data-category="${id}" aria-pressed="${category===id}"`)).join('')}</div>
-      <div class="cr-stock-scene"><div class="cr-stock-sign">${['A fresh start begins here','Back in business','The neighborhood is noticing','A café worth coming back to'][game.visualLevel]}</div><div class="cr-window">${uiIcon("sun")}</div>
+      <div class="cr-stock-scene" data-storage="${category==='milk'?'chilled':category==='supplies'?'supplies':'pantry'}"><div class="cr-stock-main"><div class="cr-stock-sign">${['A fresh start begins here','Back in business','The neighborhood is noticing','A café worth coming back to'][game.visualLevel]}</div>
       <div class="cr-shelves">${products.map(i=>{
         const fresh=game.stock(i.name),expired=game.spoiled(i.name),ice=game.frozen(i.name),low=fresh<=Math.max(game.reorderPoint,Math.ceil(game.rate(i.name)*12));
         const soon=expiring.find(e=>e.name===i.name),status=expired?'expired':fresh===0?'empty':fresh===1?'critical':low?'low':'healthy';
-        return `<button class="cr-stock-item ${status} ${soon?'expiring-soon':''}" data-action="inspect" data-product="${esc(i.name)}" draggable="true"><span class="cr-product-art">${productArt(i.name)}</span><b>${esc(i.name)}</b><span class="cr-stock-tag">${expired?` EXPIRED · ${expired}`:fresh?`${fresh} fresh${fresh===1?' · CRITICAL':low?' · LOW':''}`:ice?`${ice} frozen`:'OUT OF STOCK'}</span>${soon?`<small class="cr-expiry-tag">${uiIcon('warning')} ${soon.qty} expire in 1 day</small>`:game.incoming(i.name)?'<small> On the way</small>':!expired&&low?'<small>Reorder recommended</small>':''}</button>`;
+        return `<button class="cr-stock-item ${status} ${soon?'expiring-soon':''}" data-action="inspect" data-product="${esc(i.name)}" data-stock-count="${fresh+ice+expired}" draggable="true"><span class="cr-product-art">${productArt(i.name)}</span><b>${esc(i.name)}</b><span class="cr-stock-tag">${expired?` EXPIRED · ${expired}`:fresh?`${fresh} fresh${fresh===1?' · CRITICAL':low?' · LOW':''}`:ice?`${ice} frozen`:'OUT OF STOCK'}</span>${soon?`<small class="cr-expiry-tag">${uiIcon('warning')} ${soon.qty} expire in 1 day</small>`:game.incoming(i.name)?'<small> On the way</small>':!expired&&low?'<small>Reorder recommended</small>':''}</button>`;
       }).join('')}</div>
-      <div class="cr-stock-floor"><span>${uiIcon(game.visualLevel>1?'leaf':'shop')} <small>Green = healthy · Yellow = low · Red = empty<br>Striped tags = expired; discard</small></span>${btn('bin',uiIcon('bin')+'<small>Expired goods bin</small>','cr-bin')}</div></div>
+      <div class="cr-stock-floor"><span>${uiIcon(game.visualLevel>1?'leaf':'shop')} <small>Green = healthy · Yellow = low · Red = empty<br>Striped tags = expired; discard</small></span>${btn('bin',uiIcon('bin')+'<small>Expired goods bin</small>','cr-bin')}</div></div>${serviceWindow()}</div>
       <div class="cr-work-note">Select a product to check dates, reorder or discard; dragging to the bin also discards expired stock.</div>`;
   }
   function inspect(name) {
@@ -559,7 +588,7 @@
     } else {
       const reaction=game.reactions[0],blocked=game.orders.find(o=>o.status==='waiting'&&game.missing(o).length);
       const low=game.upgrades.includes('tracker')?game.activeIngredients().find(n=>game.stock(n)<=Math.max(game.reorderPoint,Math.ceil(game.rate(n)*12))&&!game.incoming(n)):null;
-      html=`<span>${blocked?uiIcon('warning'):game.expiredCount()?uiIcon('bin'):reaction?customerArt(reaction.face):uiIcon('shop')}</span><div><b>${blocked?`Waiting on ${esc(game.missing(blocked)[0])}`:game.expiredCount()?'Expired items need removal':low?`Tracker: reorder ${esc(low)}`:reaction?esc(reaction.name):'Your café, your decisions'}</b><small>${blocked?'Order supplies, check recipes, or change the menu.':game.expiredCount()?'Clear it from the stockroom. It cannot be sold.':reaction?esc(reaction.text):game.phase==='planning'?'Check stock before opening.':'Staff serve automatically; watch stock.'}</small></div>`;
+      html=!blocked&&!game.expiredCount()&&!low&&reaction?reactionBubble(latestReaction(),'feedback'):`<span>${blocked?uiIcon('warning'):game.expiredCount()?uiIcon('bin'):uiIcon('shop')}</span><div><b>${blocked?`Waiting on ${esc(game.missing(blocked)[0])}`:game.expiredCount()?'Expired items need removal':low?`Tracker: reorder ${esc(low)}`:'Your café, your decisions'}</b><small>${blocked?'Order supplies, check recipes, or change the menu.':game.expiredCount()?'Clear it from the stockroom. It cannot be sold.':game.phase==='planning'?'Check stock before opening.':'Staff serve automatically; watch stock.'}</small></div>`;
     }
     patch('#cr-feedback',html);
   }
@@ -582,7 +611,7 @@
   function report() {
     const r=game.reports.find(r=>r.day===game.day);if(!r)return;
     game.reviewSeen=true;save();
-    dialog('report',`Day ${game.day} complete · ${r.profit>=0?'costs covered':'loss'}`,`<div class="cr-character">${customerArt(r.served/Math.max(1,r.arrived)>.75?0:1)}<p><b>${r.served} of ${r.arrived} customers served</b>${game.day===1?'Review these results before planning Day 2.':r.profit>0?'Today’s sales covered costs.':'Review stock, prices and costs.'}</p></div>
+    dialog('report',`Day ${game.day} complete · ${r.profit>=0?'costs covered':'loss'}`,`<div class="cr-character">${customerArt(r.served/Math.max(1,r.arrived)>.75?0:1,r.served/Math.max(1,r.arrived)>.75?'happy':'neutral','report')}<p><b>${r.served} of ${r.arrived} customers served</b>${game.day===1?'Review these results before planning Day 2.':r.profit>0?'Today’s sales covered costs.':'Review stock, prices and costs.'}</p></div>
       <div class="cr-stat-row"><span>Revenue<b>${money(r.revenue)}</b></span><span>Costs<b>${money(r.cogs+r.waste+r.operating)}</b></span><span>Profit / loss<b>${money(r.profit)}</b></span></div>
       <div class="cr-result-facts"><span>Lost sales <b>${r.lost}</b></span><span>Missed revenue <b>${money(r.lostSales)}</b></span><span>Stock shortages <b>${r.stockLost||0} orders · ${money(r.stockLostRevenue||0)}</b></span><span>Expired / discarded <b>${r.wasteUnits} units</b></span><span>Customer Rating ${rating(Math.round(r.reputation/2)/10)}</span><span>Satisfaction <b>${r.satisfaction}/100</b></span><span>Fresh stock <b>${r.remaining}</b></span></div>
       ${game.day===1?'<p class="cr-note">Freshness drops one day overnight; check dates before reopening.</p>':''}<div class="cr-insight"><b>${game.day===5?'Your next improvement':'Improve this tomorrow'}</b><span>${esc(r.problem)}</span></div>${game.day===4?'<p class="cr-festival"> Festival tomorrow: prepare extra stock, staff or a smaller menu.</p>':''}
@@ -843,6 +872,7 @@
     const pending=game.deliveries.filter(d=>!d.shelved&&!d.cancelled),ready=pending.filter(d=>d.arrived).length,late=pending.some(d=>d.delayNotified&&!d.arrived);
     const nextDelivery=pending.filter(d=>d.dueDay<=game.day&&!d.arrived).sort((a,b)=>a.expected-b.expected)[0]||pending[0];
     patch('#cr-dock',`${uiIcon('box')} <b>${ready?'Supplies arrived!':late?'Delivery delayed':pending.length?`${pending.length} delivery pending`:'Delivery dock'}</b><small>${ready?'Click to shelve':late?'Check your safety stock':pending.length?arrivalText(nextDelivery):'No orders in transit'}</small>`);
+    $('#cr-dock').dataset.deliveryState=ready?'arrived':late?'delayed':pending.length?'transit':'idle';
     drawFeedback();
     patch('#cr-live-stats',`<span><b>${game.metrics.served}</b> served</span><span><b>${game.metrics.lost}</b> lost</span>`);
     if($('#cr-spendable'))$('#cr-spendable').textContent=`${money(game.spendable)} available`;
