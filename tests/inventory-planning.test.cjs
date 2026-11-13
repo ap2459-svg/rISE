@@ -14,13 +14,13 @@ const saved=g.save(130000),restored=InventorySim.restore(saved);
 assert.equal(restored.planningTimeLeft(900000),60,'saved game waits for intentional resume');
 assert.equal(g.planningTimeLeft(140000),50,'autosave does not pause the active countdown');
 restored.resumePlanningClock(900000);restored.pausePlanningClock(910000);
-assert.equal(restored.planningTimeLeft(999999),50,'dialog/background pause retains the remaining time');
+assert.equal(restored.planningTimeLeft(999999),50,'intentional mode exit retains the remaining time');
 restored.resumePlanningClock(1000000);
 assert.equal(restored.planningTimeLeft(2000000),0,'delayed callbacks clamp at zero');
 restored.pausePlanningClock(2000000);
 restored.resumePlanningClock(3000000);
 assert.equal(restored.planningTimeLeft(3000000),0,'expired time cannot be renewed');
-const legacy=JSON.parse(saved);delete legacy.state.planningRemaining;
+const legacy=JSON.parse(saved);delete legacy.state.planningRemaining;delete legacy.state.planningExpiresAt;
 assert.equal(InventorySim.restore(JSON.stringify(legacy)).planningTimeLeft(),90,'pre-timer saves still load');
 for(const invalid of [-1,91,'90',null]){
   legacy.state.planningRemaining=invalid;

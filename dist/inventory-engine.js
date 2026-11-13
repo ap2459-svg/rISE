@@ -71,7 +71,7 @@
       // Runtime deadlines are monotonic and never serialized across page loads.
       Object.defineProperty(this,'_planningDeadline',{value:null,writable:true});
       this.seed=(Number(seed)>>>0)||CONFIG.seed;
-      this.day=1; this.clock=0; this.cash=CONFIG.openingCash; this.creditLimit=CONFIG.creditLimit;
+      this.day=1; this.clock=0; this.cash=CONFIG.openingCash; this.creditLimit=CONFIG.creditLimit; this.openingOwed=0;
       this.reputation=CONFIG.openingReputation; this.lots=Object.fromEntries(ITEMS.map(i=>[i.name,[]]));
       this.deliveries=[]; this.batches=[]; this.reports=[]; this.history=[]; this.upgrades=[];
       this.badges=[]; this.rewards={}; this.xp=0;
@@ -102,19 +102,21 @@
     planProblem() {
       if(!this.lesson.plan)return 'Complete today’s required operations plan before opening.';
       if(this.day===1&&!this.learning.legacyFIFO&&!this.learning.events.some(e=>e.kind==='fifo'))return 'Unpack a delivery with older stock in front before opening.';
-      if(this.day===1&&!this.deliveries.some(d=>!d.cancelled&&d.learningDay===1&&d.supplier===this.lesson.plan.supplier))return 'Place an order with your planned supplier.';
+      if(this.day===1&&!this.deliveries.some(d=>!d.cancelled&&d.learningDay===1))return 'Place your opening order.';
       if(this.day===2&&(!this.menu.oat.enabled||this.servings('oat')<1))return 'Stock and enable Oat Milk Cold Brew; use a same-day supplier or express shipping to open today. Budget standard arrives tomorrow.';
       if(this.day===3&&!MENU.some(p=>p.kind==='bakery'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'Stock a bakery item and add it to Menu; bake frozen portions or buy ready-made.';
       if(this.day===4&&!['latte','oat'].some(id=>this.menu[id].enabled&&this.servings(id)>0))return 'Stock and enable at least one drink you priced.';
       return null;
     }
-    commitPlan(p) {
+    planError(p,{automatic=false}={}) {
       if(this.phase!=='planning'||!p||this.lesson.plan)return 'This operations plan is already saved or the shift has started.';
       const whole=(v,min,max)=>Number.isInteger(v)&&v>=min&&v<=max;
       if([1,2,5].includes(this.day)&&!whole(p.servings,1,40))return 'Choose a whole serving target from 1 to 40.';
       if([2,3,5].includes(this.day)&&(!whole(p.buffer,0,12)||!whole(p.reorder,1,12)))return 'Choose safety stock from 0 to 12 and a reorder point from 1 to 12.';
-      if(this.day===1&&(this.lesson.compared.length<2||!this.lesson.compared.includes(p.supplier)))return 'Inspect at least two supplier offers and select one you compared.';
-      if([2,5].includes(this.day)&&!this.lesson.viewed.includes('trends'))return 'Open Sales & trends before making your forecast.';
+      if(this.day===1&&!this.supplier(p.supplier))return 'Choose a supplier.';
+      if(!automatic&&this.day===1&&this.lesson.compared.length<2)return 'Inspect two supplier offers before applying your plan.';
+      if(!automatic&&this.day===1&&!this.lesson.compared.includes(p.supplier))return 'Inspect your selected supplier’s offer.';
+      if(!automatic&&[2,5].includes(this.day)&&!this.lesson.viewed.includes('trends'))return 'Open Sales & trends before making your forecast.';
       if(this.day===3&&!['inhouse','outsource','hybrid'].includes(p.strategy))return 'Choose how to supply your bakery.';
       if(this.day===4) {
         if(!p.prices||Object.keys(p.prices).length!==2)return 'Set and confirm prices for both drinks.';
@@ -129,9 +131,15 @@
       if(p.capacity==='buffer'&&p.buffer===0)return 'Set extra stock to at least 1, or choose a helper or focused menu.';
       const upgrade=UPGRADES.find(u=>u.id===p.investment&&!this.upgrades.includes(u.id));
       const cost=(upgrade?.cost||0)+([3,5].includes(this.day)&&p.capacity==='helper'&&!this.helper?22:0);
+      if(automatic&&(cost>0||(this.day===3&&p.strategy!==this.strategy)))return 'Automatic defaults cannot buy improvements or change stored goods.';
       if(cost>this.spendable)return 'This plan exceeds available cash and credit. Choose another strategy.';
+      return null;
+    }
+    commitPlan(p,options={}) {
+      const problem=this.planError(p,options);if(problem)return problem;
+      const upgrade=UPGRADES.find(u=>u.id===p.investment&&!this.upgrades.includes(u.id));
       // Validate everything before applying choices. No cart purchases happen here.
-      if(this.day===3)this.setStrategy(p.strategy);
+      if(this.day===3){if(options.automatic)this.strategyChosen=true;else this.setStrategy(p.strategy);}
       if(this.day===4)for(const [id,value]of Object.entries(p.prices))this.setPrice(id,value);
       if([3,5].includes(this.day)&&p.capacity==='helper'&&!this.helper)this.hireHelper();
       if([3,5].includes(this.day)&&p.capacity==='focus') {
@@ -141,9 +149,25 @@
       }
       if(upgrade)this.buyUpgrade(upgrade.id);
       if(p.buffer!==undefined){this.safetyStock=p.buffer;this.reorderPoint=p.reorder;}
-      this.lesson.plan=clone(p);
-      this.learning.events.push({kind:'plan',day:this.day,clock:this.clock,decision:clone(p),cash:this.cash});
+      this.lesson.plan={...clone(p),...(options.automatic?{automatic:true}:{})};
+      this.learning.events.push({kind:options.automatic?'plan-default':'plan',day:this.day,clock:this.clock,decision:clone(p),cash:this.cash});
       return null;
+    }
+    defaultPlan() {
+      const d=this.lesson.draft||{},whole=(v,min,max,fallback)=>v!==''&&v!==null&&v!==undefined&&Number.isInteger(Number(v))&&Number(v)>=min&&Number(v)<=max?Number(v):fallback;
+      const servings=whole(d.servings,1,40,this.day===5?18:12);
+      const stock={buffer:whole(d.buffer,0,12,this.safetyStock),reorder:whole(d.reorder,1,12,this.reorderPoint)};
+      // Preserve the actual bakery/menu setup; unconfirmed hiring and upgrades cost money.
+      const capacity={capacity:this.helper?'helper':'buffer',investment:'hold',reason:['waste','capacity','cash'].includes(d.reason)?d.reason:'cash'};
+      if([3,5].includes(this.day)&&!this.helper)stock.buffer=Math.max(1,stock.buffer);
+      if(this.day===1)return {servings,supplier:this.supplier(d.supplier)?d.supplier:'quick'};
+      if(this.day===2)return {servings,...stock};
+      if(this.day===3)return {strategy:this.strategy,...stock,...capacity};
+      if(this.day===4)return {prices:Object.fromEntries(['latte','oat'].map(id=>{
+        const p=MENU.find(p=>p.id===id),v=Number(d['price-'+id]);
+        return [id,Number.isFinite(v)&&v>=p.price*.5&&v<=p.price*1.8&&Math.abs(v*4-Math.round(v*4))<1e-8?v:clamp(Math.round(this.menu[id].price*4)/4,p.price*.5,Math.floor(p.price*1.8*4)/4)];
+      }))};
+      return {servings,...stock,...capacity};
     }
     reviewOptions() {
       const r=this.reports.find(r=>r.day===this.day);if(!r)return null;
@@ -173,9 +197,14 @@
       return {version:2,campaignVersion:CONFIG.version,totalDays:CONFIG.days,targetMinutes:15,scope:'Participation and in-game decisions; not a validated knowledge test.',day:this.day,curriculum:Object.entries(concepts).map(([day,topics])=>({day:Number(day),topics,completed:!!this.learning.days[day]?.review&&!this.learning.days[day]?.plan?.legacy})),days:clone(this.learning.days),events:clone(this.learning.events),results:clone(this.reports)};
     }
     get rating() { return Math.round(this.reputation/2)/10; }
-    get spendable() { return Math.max(0,this.cash+this.creditLimit); }
+    get spendable() { return Math.max(0,this.cash+this.creditLimit-this.openingOwed); }
+    get openingCost() { return CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0); }
+    settleOpeningCosts() {
+      const paid=Math.min(this.openingOwed,Math.max(0,this.cash+this.creditLimit));
+      this.cash-=paid;this.openingOwed-=paid;
+    }
     get profit() { return this.metrics.revenue-this.metrics.cogs-this.metrics.waste-this.metrics.operating; }
-    get balance() { return this.cash+this.inventoryValue(); }
+    get balance() { return this.cash+this.inventoryValue()-this.openingOwed; }
     get satisfaction() { return this.metrics.served?Math.round(this.metrics.satisfactionTotal/this.metrics.served):this.reputation; }
     get visualLevel() { return this.reputation>=70&&this.balance>-150?3:this.reputation>=45?2:this.tutorial.shelved?1:0; }
     get health() {
@@ -188,7 +217,7 @@
       this.rewards[key]=true; this.badges.push(title); this.xp+=points; return true;
     }
     beginDay() {
-      this._planningDeadline=null; this.planningRemaining=CONFIG.planningSeconds;
+      this._planningDeadline=null; this.planningExpiresAt=null; this.planningRemaining=CONFIG.planningSeconds;
       this.phase='planning'; this.running=false; this.elapsed=0; this.pendingEvent=null; this.eventSeen=false;
       this.briefed=false; this.orders=[]; this.helper=false; this.discount=false; this.promotion=null;
       this.ovenBroken=false; this.slowOven=false; this.safetyAlert=false; this.metrics=newMetrics();
@@ -350,7 +379,7 @@
         stat.orders++; stat.onTime+=!d.delayed?1:0; stat.correct+=!d.error?1:0;
         if(d.error) {
           const l=d.lines[0], missing=Math.max(1,Math.floor(l.qty*.25)), refund=missing*l.cost;
-          l.qty-=missing; this.cash+=refund; this.metrics.refunds+=refund; this.metrics.purchases-=refund;
+          l.qty-=missing; this.cash+=refund;this.settleOpeningCosts(); this.metrics.refunds+=refund; this.metrics.purchases-=refund;
           d.problem=`${missing} ${l.name} missing; $${refund.toFixed(2)} refunded.`;
         }
         d.lines=d.lines.filter(l=>l.qty>0);
@@ -408,7 +437,7 @@
       if(!['wait','refund'].includes(choice))return 'Choose wait or refund.';
       if(choice==='refund') {
         const refund=sum(d.lines.filter(l=>!l.written).map(l=>l.qty*l.cost));
-        this.cash+=refund;this.metrics.purchases-=refund;this.metrics.refunds+=refund;
+        this.cash+=refund;this.settleOpeningCosts();this.metrics.purchases-=refund;this.metrics.refunds+=refund;
         d.lines=[];d.shelved=true;d.cancelled=true;
       }
       d.resolved=true;return null;
@@ -517,14 +546,14 @@
       for(const i of ITEMS.filter(i=>i.group==='bakery')) {
         if(active)this.discard(i.name);
         for(const l of this.lots[i.name]) {
-          if(active&&l.frozen&&!l.written&&l.expires>this.day){const value=l.qty*l.cost;this.cash+=value;this.metrics.refunds+=value;this.metrics.purchases-=value;l.qty=0;}
+          if(active&&l.frozen&&!l.written&&l.expires>this.day){const value=l.qty*l.cost;this.cash+=value;this.settleOpeningCosts();this.metrics.refunds+=value;this.metrics.purchases-=value;l.qty=0;}
           else cover(l);
         }
         this.lots[i.name]=this.lots[i.name].filter(l=>l.qty>0);
       }
       for(const d of this.deliveries.filter(d=>!d.shelved&&!d.cancelled)) {
         for(const l of d.lines.filter(l=>BY_NAME[l.name].group==='bakery')) {
-          if(active&&l.frozen){if(!l.written&&(!d.arrived||l.expires>this.day)){const value=l.qty*l.cost;this.cash+=value;this.metrics.refunds+=value;this.metrics.purchases-=value;}l.qty=0;}
+          if(active&&l.frozen){if(!l.written&&(!d.arrived||l.expires>this.day)){const value=l.qty*l.cost;this.cash+=value;this.settleOpeningCosts();this.metrics.refunds+=value;this.metrics.purchases-=value;}l.qty=0;}
           else if(!d.arrived){l.supplierManaged=true;l.life=100000000;}
           else cover(l);
         }
@@ -659,7 +688,7 @@
           for(const [name,qty] of Object.entries(this.requirements(order))) {
             const used=this.consume(name,qty); cost+=used.cost; quality+=used.quality*qty; units+=qty;
           }
-          order.status='served'; this.metrics.served++; this.cash+=order.price;
+          order.status='served'; this.metrics.served++; this.cash+=order.price;this.settleOpeningCosts();
           this.metrics.revenue+=order.price; this.metrics.cogs+=cost;
           const wait=this.clock-order.arrival,q=quality/units;
           const priceRatio=sum(order.products.map(id=>this.menu[id].price/MENU.find(p=>p.id===id).price))/order.products.length;
@@ -737,28 +766,50 @@
       return correct;
     }
     /* Real preparation time is independent of simulation speed and logistics jumps.
-       Dialogs, hidden tabs and leaving the mode intentionally pause both clocks. */
-    planningTimeLeft(now=performance.now()) {
-      return this.phase==='planning'?Math.max(0,this._planningDeadline===null?this.planningRemaining:(this._planningDeadline-now)/1000):0;
+       The wall deadline survives reloads; the monotonic deadline prevents clock changes extending it. */
+    planningTimeLeft(now=performance.now(),wallNow=Date.now()) {
+      if(this.phase!=='planning')return 0;
+      return Math.max(0,Math.min(this.planningRemaining,this._planningDeadline===null?Infinity:(this._planningDeadline-now)/1000,this.planningExpiresAt===null?Infinity:(Date.parse(this.planningExpiresAt)-wallNow)/1000));
     }
-    resumePlanningClock(now=performance.now()) {
-      if(this.phase==='planning'&&this._planningDeadline===null)this._planningDeadline=now+this.planningRemaining*1000;
+    resumePlanningClock(now=performance.now(),wallNow=Date.now()) {
+      if(this.phase==='planning'&&this._planningDeadline===null){
+        const remaining=this.planningTimeLeft(now,wallNow);
+        this._planningDeadline=now+remaining*1000;
+        this.planningExpiresAt??=new Date(wallNow+remaining*1000).toISOString();
+      }
     }
-    pausePlanningClock(now=performance.now()) {
-      this.planningRemaining=this.planningTimeLeft(now); this._planningDeadline=null;
+    pausePlanningClock(now=performance.now(),wallNow=Date.now()) {
+      this.planningRemaining=this.planningTimeLeft(now,wallNow); this._planningDeadline=null;this.planningExpiresAt=null;
     }
-    /* Campaign clock: planning advances logistics only; the live shift advances everything. */
-    open() {
+    openingProblem() {
       if(this.phase!=='planning') return 'This day has already started.';
       if(!this.briefed) return 'Read today’s short briefing first.';
       if(this.expiredCount()) return 'Clear the expired stock before opening. Expired food cannot be served.';
       if(!this.strategyChosen) return 'Choose today’s bakery strategy in Menu & bakery.';
       const lessonProblem=this.planProblem();if(lessonProblem)return lessonProblem;
       if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0)) return 'Stock at least one complete drink recipe before opening.';
-      const overhead=CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0);
-      if(!this.spendOperating(overhead)) return `Keep $${overhead} available for today’s rent, power and staff.`;
-      this.phase='shift'; this.planningRemaining=0; this._planningDeadline=null;
-      this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
+      if(this.spendable+1e-8<this.openingCost)return `Keep $${this.openingCost} available for today’s rent, power and staff.`;
+      return null;
+    }
+    /* Manual and deadline starts share one atomic transition and one opening charge. */
+    open() {
+      if(this.phase!=='planning')return 'This day has already started.';
+      if(!this.briefed)return 'Read today’s short briefing first.';
+      const expired=this.planningTimeLeft()===0;
+      if(expired){
+        if(!this.lesson.plan){const problem=this.commitPlan(this.defaultPlan(),{automatic:true});if(problem)return problem;}
+        this.strategyChosen=true;this.lesson.deadlineStart=true;
+      }else{const problem=this.openingProblem();if(problem)return problem;}
+      const overhead=this.openingCost;
+      this.settleOpeningCosts();
+      const paid=Math.min(overhead,Math.max(0,this.cash+this.creditLimit));
+      this.cash-=paid;this.openingOwed+=overhead-paid;this.metrics.operating+=overhead;
+      this.learning.events.push({kind:'opening',day:this.day,clock:this.clock,automatic:expired,cost:overhead,paid,owed:this.openingOwed});
+      this.phase='shift'; this.planningRemaining=0; this._planningDeadline=null;this.planningExpiresAt=null;
+      this.running=true;
+      if(expired&&this.tutorial.active){this.tutorial.skipped=true;this.tutorial.timedOut=true;}
+      else this.tutorial.finished=true;
+      this.tutorial.active=false; return null;
     }
     tickPlanning(seconds) {
       if(this.phase!=='planning'||!Number.isFinite(seconds)||seconds<=0)return;
@@ -816,7 +867,7 @@
       const report=this.reports.find(r=>r.day===this.day); if(!report) return;
       Object.assign(report,clone(this.metrics),{
         day:this.day,title:this.info.title,profit:this.profit,cash:this.cash,balance:this.balance,
-        inventoryValue:this.inventoryValue(),remaining:sum(ITEMS.map(i=>this.stock(i.name))),
+        inventoryValue:this.inventoryValue(),openingOwed:this.openingOwed,remaining:sum(ITEMS.map(i=>this.stock(i.name))),
         reputation:this.reputation,satisfaction:this.satisfaction,problem:this.biggestProblem(),
         openingCash:this.openingCash,openingValue:this.dayOpeningValue,
         averageInventory:this.metrics.stockSamples?this.metrics.stockValueSum/this.metrics.stockSamples:0,
@@ -855,6 +906,10 @@
         if(typeof serialized!=='string'||serialized.length>1500000) return null;
         const envelope=JSON.parse(serialized),s=envelope.state;
         if(envelope.version!==CONFIG.version||!s||!Number.isInteger(s.day)||s.day<1||s.day>CONFIG.days) return null;
+        if(!Object.hasOwn(s,'openingOwed'))s.openingOwed=0;
+        if(!Object.hasOwn(s,'planningExpiresAt'))s.planningExpiresAt=null;
+        if(!Number.isFinite(s.openingOwed)||s.openingOwed<0||s.openingOwed>CONFIG.days*CONFIG.dailyOverhead||
+          !(s.planningExpiresAt===null||typeof s.planningExpiresAt==='string'&&Number.isFinite(Date.parse(s.planningExpiresAt))))return null;
         const safe=value=>{
           if(typeof value==='number') return Number.isFinite(value)&&Math.abs(value)<1e12;
           if(Array.isArray(value)) return value.length<20000&&value.every(safe);
