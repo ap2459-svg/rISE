@@ -466,3 +466,17 @@
 @media(max-width:700px){.cr-game .cr-guide-actions button{font-size:12px}.cr-game .cr-nav{min-width:0}.cr-game .cr-nav>button{min-width:0;white-space:normal}.cr-game .cr-nav>button span{flex-shrink:0}}
 @media(max-width:400px){.cr-game .cr-nav>button{font-size:12px;padding:4px 2px;line-height:1.2}.cr-game .cr-nav>button span{display:none}}
 @media(max-width:520px){.cr-dialog .cr-result-facts{grid-template-columns:minmax(0,1fr)}}
+/* Preparation uses real time, with a visible label at every screen size. */
+.cr-planning{display:flex;align-items:center;gap:16px;padding:9px 18px;background:#f5eddd;border:1px solid #d3bda1;border-radius:10px;flex-shrink:0;color:#493222}
+.cr-planning[hidden],.cr-clock[hidden]{display:none}
+.cr-planning-clock{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px;font-weight:700}
+#cr-planning-time{font-size:22px;font-variant-numeric:tabular-nums;line-height:1.2}
+#cr-planning-paused{font-size:12px;font-weight:500}
+.cr-planning p{flex:1;min-width:0;margin:0;font-size:12px;line-height:1.4}
+.cr-planning-expired{background:#fff1bd;border-color:#be8f25}
+@media(max-width:700px){.cr-planning{flex-direction:column;align-items:stretch;gap:4px;padding:8px 11px}.cr-planning-clock{gap:7px}.cr-planning p{font-size:12px}}
+@media(max-height:600px){
+  .inventory-playing:has(.cr-planning:not([hidden])){overflow:auto}
+  .cr-game:has(.cr-planning:not([hidden])){height:auto;min-height:100dvh}
+  .cr-game:has(.cr-planning:not([hidden])) .cr-work{flex:1 0 auto;min-height:420px}
+}
