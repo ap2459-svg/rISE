@@ -19,7 +19,7 @@
       <p class="rise-survey-eyebrow">WELCOME TO rISE CAFÉ</p>
       <h2 id="rise-survey-title">Before you play…</h2>
       <p id="rise-survey-description">Please take our <strong>pre-survey</strong> before choosing a mode. Help us understand what you know about Industrial and Systems Engineering before playing.</p>
-      <a class="rise-survey-primary" href="https://forms.gle/6Wcy1Vtr1EciL6f1A" target="_blank" rel="noopener noreferrer" aria-describedby="rise-survey-new-tab" autofocus>Open pre-survey <span aria-hidden="true">↗</span></a>
+      <a class="rise-survey-primary" href="https://docs.google.com/forms/d/e/1FAIpQLSeI_Ux7K6IJD_AkeLoIDVBUaJ-Iv3lhqelqapH6d7uvwxbm7w/viewform?usp=header" target="_blank" rel="noopener noreferrer" aria-describedby="rise-survey-new-tab" autofocus>Open pre-survey <span aria-hidden="true">↗</span></a>
       <p id="rise-survey-new-tab" class="rise-survey-note">Opens in a new tab. When you’re done, return here to play.</p>
       <button type="button" class="rise-survey-continue">Continue to game</button>
     </div>`;
