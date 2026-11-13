@@ -1,7 +1,7 @@
-import {floorPattern} from './upgrade-designs.mjs?v=chair-shortcut-31';
+import {floorPattern} from './upgrade-designs.mjs?v=crowds-40';
 import * as THREE from './vendor/three.module.js';
-import {box,cyl,ball,plant,windowPanel,chalkboard,wallMap,textured,cobweb,makeItem} from './models.mjs?v=chair-shortcut-31';
-import {paintedFloor,paintedPatch,wallSkin} from './painted.mjs?v=chair-shortcut-31';
+import {box,cyl,ball,plant,windowPanel,chalkboard,wallMap,textured,cobweb,makeItem} from './models.mjs?v=crowds-40';
+import {paintedFloor,paintedPatch,wallSkin} from './painted.mjs?v=crowds-40';
 
 // The original painted café, with a bigger usable floor and real extensions.
 export function makeCafeRoom(state){
@@ -43,7 +43,7 @@ export function makeCafeRoom(state){
  group.userData.dayWindows=dayWindows;return {group,walls,surfaces};
 }
 function label(parent,text,x,y,z,w){const c=document.createElement('canvas');c.width=384;c.height=128;const ctx=c.getContext('2d');ctx.fillStyle='#30483b';ctx.fillRect(0,0,384,128);ctx.strokeStyle='#c6a56a';ctx.lineWidth=10;ctx.strokeRect(5,5,374,118);ctx.fillStyle='#fff3d6';ctx.font='bold 40px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,192,67);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const m=new THREE.Mesh(new THREE.PlaneGeometry(w,w/3),new THREE.MeshBasicMaterial({map:t}));m.position.set(x,y,z);parent.add(m)}
-function bathrooms(root,walls,dual){const g=new THREE.Group();root.add(g);const front=new THREE.Group(),side=new THREE.Group(),divider=new THREE.Group();g.add(front,side,divider);walls.push({group:front,axis:'z',sign:1},{group:side,axis:'x',sign:-1},{group:divider,axis:'x',sign:1});
+function bathrooms(root,walls,dual){const g=new THREE.Group();root.add(g);const front=new THREE.Group(),side=new THREE.Group(),divider=new THREE.Group();g.add(front,side,divider);g.name='enclosed-bathroom';box(g,2.92,.12,3.37,5.8,2.94,-6.225,0xc8cbb6);box(g,2.8,2.9,.12,5.8,1.45,-7.85,0xd8d7bf);box(g,.12,2.9,3.25,7.2,1.45,-6.225,0xd8d7bf);
  box(g,2.8,.025,3.25,5.8,.02,-6.225,0xc4c7ab);for(let x=4.5;x<7.15;x+=.4)for(let z=-7.7;z<-4.7;z+=.4){box(g,.38,.01,.38,x,.04,z,(Math.round(x*10)+Math.round(z*10))%3?0xd1ceb7:0xb7bea3,false)}
  box(side,.12,2.7,3.25,4.4,1.35,-6.225,0xd8d7bf);if(dual)box(divider,.10,2.7,3.25,5.8,1.35,-6.225,0xd8d7bf);
  box(g,.12,.38,3.25,4.4,.19,-6.225,0xc7c9ad);if(dual)box(g,.10,.38,3.25,5.8,.19,-6.225,0xc7c9ad);for(const [x,w]of(dual?[[4.47,.14],[5.8,.48],[7.13,.14]]:[[4.875,.95],[6.775,.85]])){box(front,w,2.55,.13,x,1.275,-4.6,0xd8d7bf);box(g,w,.38,.13,x,.19,-4.6,0xc7c9ad)}

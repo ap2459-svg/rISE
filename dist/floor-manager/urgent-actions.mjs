@@ -1,18 +1,18 @@
-import {TABLE_OUTLET_PRICE,supportsCharging,tableOutlet,hasTableOutlet} from './charging.mjs?v=chair-shortcut-31';
-import {RENOVATIONS,bathroomDoors,purchaseRenovation} from './renovations.mjs?v=chair-shortcut-31';
-import {rewardGuest} from './patience.mjs?v=chair-shortcut-31';
-import {upgradeCost} from './upgrade-designs.mjs?v=chair-shortcut-31';
+import {TABLE_OUTLET_PRICE,supportsCharging,tableOutlet,hasTableOutlet} from './charging.mjs?v=crowds-40';
+import {RENOVATIONS,bathroomDoors,purchaseRenovation} from './renovations.mjs?v=crowds-40';
+import {rewardGuest} from './patience.mjs?v=crowds-40';
+import {upgradeCost} from './upgrade-designs.mjs?v=crowds-40';
 // Suggestions and execution share this evaluator. No purchase is charged until
 // its placement and its effect on the requesting customer have been rechecked.
-import {CafeSimulation,cafeSnapshot,clone,worldObstacles,seatsIn,PROFILES} from './day.mjs?v=chair-shortcut-31';
-import {CATALOG,isTable} from './catalog.mjs?v=chair-shortcut-31';
-import {SETS,createSet} from './seating-sets.mjs?v=chair-shortcut-31';
-import {ROOM,ENTRY,placement,overlap} from './layout.mjs?v=chair-shortcut-31';
+import {CafeSimulation,cafeSnapshot,clone,worldObstacles,seatsIn,PROFILES} from './day.mjs?v=crowds-40';
+import {CATALOG,isTable} from './catalog.mjs?v=crowds-40';
+import {SETS,createSet} from './seating-sets.mjs?v=crowds-40';
+import {ROOM,ENTRY,placement,overlap} from './layout.mjs?v=crowds-40';
 export const urgency=g=>g.concern&&!['exiting','departed','pending'].includes(g.phase)?Math.max(0,Math.min(1,1-g.concern.remaining/g.concern.total)):0;
 export const stage=g=>!g.concern?'normal':urgency(g)<.35?'yellow':urgency(g)<.7?'orange':'red';
 export function trialSimulation(sim,cafe){const t=Object.assign(Object.create(CafeSimulation.prototype),sim);t.cafe=clone(cafe);t.obs=worldObstacles(t.cafe);t.seats=seatsIn(t.cafe);t.tables=t.cafe.objects.filter(isTable);t.cache=new Map();t.bathrooms=bathroomDoors(t.cafe);return t}
-function works(t,g){if(g.phase==='needsBathroom')return t.bathrooms.length>0;if(['seekingSeat','toWait'].includes(g.phase)){const choice=t.selectTable(g);return !!choice&&choice.score>=PROFILES[g.type].threshold&&!!t.path(g.pos,choice.path.at(-2),g.accessible?.34:.18)}if(g.phase!=='seated')return false;const seat=t.seats.find(s=>s.id===g.seat?.id),table=t.tables.find(t=>t.id===g.tableId);if(!seat||!table)return false;const f=t.factors(g,seat,table);return ({outlets:f.outlet>.5,lighting:f.light>=.5&&(g.requestedAmenity!=='lighting'||t.cafe.objects.some(o=>o.type==='deskLamp'&&Math.hypot(o.x-g.seat.x,o.z-g.seat.z)<2)),comfort:f.comfort>=(g.requestedAmenity==='comfort'?.95:.8),noise:f.quiet>=.68,atmosphere:f.music>=.6})[g.concern.key]===true}
-function safe(t,sim,added){if(added.some(o=>{const actual=t.cafe.objects.find(n=>n.id===o.id);return placement(actual,t.obs)==='blocked'}))return false;if(added.some(o=>sim.parties.some(p=>!['pending','departed','exiting'].includes(p.phase)&&overlap(o,{type:'fixture',x:p.pos.x,z:p.pos.z,width:.5,depth:.5}))))return false;if(!t.path(ENTRY,t.order))return false;for(const p of sim.parties.filter(p=>p.phase==='seated'))if(!t.path(t.pickup,p.seatApproach))return false;return true}
+function works(t,g){if(g.phase==='needsBathroom')return t.bathroomAvailable(g);if(['seekingSeat','toWait'].includes(g.phase)){const choice=t.selectTable(g);return !!choice&&choice.score>=PROFILES[g.type].threshold&&!!t.path(g.pos,choice.path.at(-2),g.accessible?.34:.18)}if(g.phase!=='seated')return false;const seat=t.seats.find(s=>s.id===g.seat?.id),table=t.tables.find(t=>t.id===g.tableId);if(!seat||!table)return false;const f=t.factors(g,seat,table);return ({outlets:f.outlet>.5,lighting:f.light>=.5&&(g.requestedAmenity!=='lighting'||t.cafe.objects.some(o=>o.type==='deskLamp'&&Math.hypot(o.x-g.seat.x,o.z-g.seat.z)<2)),comfort:f.comfort>=(g.requestedAmenity==='comfort'?.95:.8),noise:f.quiet>=.68,atmosphere:f.music>=.6})[g.concern.key]===true}
+function safe(t,sim,added){if(added.some(o=>{const actual=t.cafe.objects.find(n=>n.id===o.id);return placement(actual,t.obs)==='blocked'}))return false;if(added.some(o=>sim.parties.some(p=>!['pending','departed','exiting'].includes(p.phase)&&overlap(o,{type:'fixture',x:p.pos.x,z:p.pos.z,width:.5,depth:.5}))))return false;if(t.routeProblems().length)return false;for(const p of sim.parties.filter(p=>p.phase==='seated'))if(!t.path(t.pickup,p.seatApproach))return false;return true}
 export function availableFix(sim,g,state,choice=null){
  if(!g?.concern||['pending','departed','exiting'].includes(g.phase))return null;
  const key=g.concern.key,budget=state.money;

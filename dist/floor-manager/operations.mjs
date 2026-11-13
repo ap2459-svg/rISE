@@ -1,5 +1,5 @@
-import {CafeSimulation,staticAssessment,PROFILES} from './day.mjs?v=chair-shortcut-31';
-import {ENTRY,free} from './layout.mjs?v=chair-shortcut-31';
+import {CafeSimulation,staticAssessment,PROFILES} from './day.mjs?v=crowds-40';
+import {ENTRY,free} from './layout.mjs?v=crowds-40';
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z),length=p=>p.slice(1).reduce((n,q,i)=>n+distance(q,p[i]),0);
 export function forecast(cafe){
  const sim=new CafeSimulation(cafe,'day'),assessment=staticAssessment(cafe),routes=[],warnings=[];
