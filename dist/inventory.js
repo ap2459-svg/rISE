@@ -8,8 +8,8 @@
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const money=n=>`${n<0?'−':''}$${Math.abs(n).toFixed(2)}`;
   const time=n=>{const v=Math.ceil(Math.max(0,n));return `${Math.floor(v/60)}:${String(v%60).padStart(2,'0')}`;};
-  const labels={rescue:'Needs care',coffee:'Coffee',milk:'Milk',syrup:'Syrups',topping:'Toppings',bakery:'Bakery',supplies:'Supplies'};
-  let game=null,tab='stock',category='rescue',selected='Whole Milk',supplier='quick',qty=6,frozen=false,express=false,cart=[];
+  const labels={coffee:'Coffee',milk:'Milk',syrup:'Syrups',topping:'Toppings',bakery:'Bakery',supplies:'Supplies'};
+  let game=null,tab='stock',selected='Whole Milk',supplier='quick',qty=6,frozen=false,express=false,cart=[];
   let menuPage=0,menuSection='drinks',speed=1,dialogState=null,lastFrame=0,lastPaint=0,lastSave=0,lastXP=0,saveError=false,audio;
   let inspected=null,upgradePage=0,dragged=null,unpacking=null,recipeTargets={},recipeItem='latte',feedbackMessage=null;
   let cartComparison=null;
@@ -65,6 +65,27 @@
   function productArt(name) {
     const i=item(name);
     return i&&['coffee','milk','syrup','topping'].includes(i.group)?ingredientIcon(i.group,name==='Almond Milk'?'Almond':name):uiIcon(i?.icon||'cup');
+  }
+  // Stockroom packaging reuses the existing ingredient drawings and café palette.
+  // The common baseline keeps each container resting on its shelf.
+  function shelfArt(i) {
+    const art=productArt(i.name);
+    if(i.group==='milk'||i.group==='syrup'||(i.group==='topping'&&i.name.includes('Drizzle')))
+      return art.replace('viewBox="0 0 92 84"','viewBox="8 3 76 73" preserveAspectRatio="xMidYMax meet"');
+    const inset=(x,y,w,h)=>art.replace('<svg ',`<svg x="${x}" y="${y}" width="${w}" height="${h}" `);
+    let container;
+    if(i.group==='coffee') {
+      const color={'Original Blend':'#b47849','Cold Brew':'#628d87','Decaf':'#8ca86f'}[i.name];
+      container=i.name==='Cold Brew'
+        ?`<path d="M33 17h26v13l8 9v31q0 4-4 4H29q-4 0-4-4V39l8-9z" fill="${color}"/><rect x="31" y="8" width="30" height="10" rx="3" fill="#574539"/><rect x="29" y="39" width="34" height="28" rx="4" fill="#fff0ce"/>${inset(30,39,32,29)}`
+        :`<path d="M23 10h46l-4 15 7 46q0 3-4 3H24q-4 0-4-3l7-46z" fill="${color}"/><path d="M23 10h46l-4 12H27z" fill="#eed5a5"/><path d="M28 16h36M25 69h42" fill="none"/><rect x="29" y="31" width="34" height="31" rx="4" fill="#fff0ce"/>${inset(30,31,32,30)}`;
+    } else if(i.group==='topping') {
+      container=`<rect x="23" y="26" width="46" height="48" rx="8" fill="${i.name==='Cinnamon'?'#c69a66':'#e8eee0'}"/><path d="M20 22q26-7 52 0v10H20z" fill="${i.name==='Cinnamon'?'#9c6940':'#8bb6a4'}"/><rect x="28" y="38" width="36" height="29" rx="5" fill="#fff4db"/>${inset(29,37,34,30)}`;
+    } else {
+      const y={Croissant:20,'Breakfast Sandwich':16,Cookie:14,Cup:14,Lid:29,Straw:14,Utensil:12,'Bakery Bag':12,Napkin:14}[i.name];
+      container=`<path d="M14 66h64l-5 8H19z" fill="${i.group==='bakery'?'#ba8753':'#c6d5bd'}"/>${inset(16,y,60,60)}`;
+    }
+    return `<svg viewBox="8 3 76 73" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false"><g stroke="#573421" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${container}</g></svg>`;
   }
   const drinkArt=p=>p.kind==='bakery'?productArt(p.name):'<img class="cr-coffee-image" src="assets/caramel-coffee.png" alt="">';
   // Reuse Barista's illustrated cast and expression overlays without changing its renderer.
@@ -169,7 +190,8 @@
     const prior=dialogState;dialogState=null;$('#cr-modal')?.remove();$('.cr-game')?.removeAttribute('inert');
     planningReady=true;
     if(game&&resume&&prior?.resume&&game.phase==='shift'&&!game.pendingEvent)game.running=true;
-    ($('#'+(prior?.focus||'cr-play'))||$('#cr-play'))?.focus();
+    const fallback=tab==='stock'?$('.cr-nav [data-tab="stock"]'):$('#cr-play');
+    (prior?.focus?$('#'+CSS.escape(prior.focus))||fallback:fallback)?.focus({preventScroll:tab==='stock'});
     drawTab();updateHUD();save();
   }
   function error(message) { const node=$('#cr-dialog-error');if(node)node.textContent=message;else toast(message,false); }
@@ -180,7 +202,7 @@
     const previous=savedGame();
     game=previous||new InventorySim();window.inventoryGame=game;
     supplier=previous?.tutorial.selectedSupplier||'quick';
-    tab='stock';category='rescue';cart=previous?.tutorial.cart?.map(l=>({...l}))||[];recipeTargets={...(previous?.tutorial.recipeTargets||{})};feedbackMessage=null;speed=1;dialogState=null;
+    tab='stock';cart=previous?.tutorial.cart?.map(l=>({...l}))||[];recipeTargets={...(previous?.tutorial.recipeTargets||{})};feedbackMessage=null;speed=1;dialogState=null;
     if(previous&&!game.tutorial.ordered&&!cart.length){game.tutorial.cartAdded=false;game.tutorial.reviewed=false;}
     render();
     if(previous) {
@@ -277,7 +299,7 @@
     stock:['Select Stockroom.','Check shelf quantities before buying.','.cr-nav [data-tab="stock"]'],
     inspect:['Select Whole Milk.','Check quantity and freshness; EXPIRED stock cannot be served.','[data-action="inspect"][data-product="Whole Milk"]'],
     clean:['Select an EXPIRED product.','Discard expired stock before opening; discarding usable stock creates waste.','.cr-stock-item.expired'],
-    missing:['Select Supplies.','Drinks need cups and lids as well as ingredients.','[data-category="supplies"]'],
+    missing:['Select Cup on the Supplies shelf.','OUT OF STOCK: no cups are usable, so lattes cannot sell.','[data-action="inspect"][data-product="Cup"]'],
     menu:['Select Menu.','“Can be made now” counts complete recipes, not individual ingredients.','.cr-nav [data-tab="menu"]'],
     recipe:['Select Recipe on Vanilla Latte.','Plan five servings for this example; the target does not predict sales.','[data-action="recipe"][data-id="latte"]'],
     cart:['Select Add All Ingredients to Cart.','Need is the target; only quantities missing from stock, usable deliveries today and your cart are added, without spending money.','[data-action="recipe-cart"]'],
@@ -299,8 +321,6 @@
       action=game.spoiled(inspected)?'Select Move expired stock to bin.':'Select Done.';
       selector=game.spoiled(inspected)?'[data-action="trash-selected"]':'[data-action="close"]';
       why=game.spoiled(inspected)?'Only expired stock is removed, freeing shelf space.':'Ready to use is usable stock; On the way has not reached the shelf.';
-    } else if(step==='missing'&&category==='supplies') {
-      action='Select Cup.';selector='[data-action="inspect"][data-product="Cup"]';why='OUT OF STOCK: no cups are usable, so lattes cannot sell.';
     } else if(step==='compare') {
       const next=SUPPLIERS.find(s=>!game.tutorial.compared.includes(s.id));
       action=`Select ${next.name}.`;selector=`[data-action="supplier"][data-supplier="${next.id}"]`;
@@ -345,7 +365,7 @@
   function showTourAction() {
     const step=game.tutorialStep();if(!step)return;
     if(dialogState){closeDialog(false);}
-    if(['stock','inspect','clean','missing'].includes(step)){tab='stock';category=step==='inspect'?'milk':step==='missing'?'supplies':'rescue';}
+    if(['stock','inspect','clean','missing'].includes(step))tab='stock';
     else if(['menu','recipe','cart'].includes(step)){tab='menu';menuSection='drinks';menuPage=0;}
     else if(step==='trends'||step==='ready')tab='trends';
     else tab='supply';
@@ -391,19 +411,22 @@
     highlightTour();
   }
   function stockroom() {
-    const expiring=game.expiringItems(),care=INVENTORY_ITEMS.filter(i=>game.spoiled(i.name)||expiring.some(e=>e.name===i.name));
-    let products=category==='rescue'?(care.length?care.slice(0,6):INVENTORY_ITEMS.filter(i=>game.activeIngredients().includes(i.name)&&game.stock(i.name)<=Math.max(2,Math.ceil(game.rate(i.name)*12))).slice(0,6)):INVENTORY_ITEMS.filter(i=>i.group===category);
-    if(!products.length)products=INVENTORY_ITEMS.filter(i=>game.activeIngredients().includes(i.name)).slice(0,6);
-    return `<div class="cr-work-title"><div><span class="cr-kicker">CHECK YOUR STOCK</span><h1>Your stockroom</h1></div><span class="cr-health">${game.health}% stock health</span></div>
-      <div class="cr-category-tabs" role="group" aria-label="Stock categories">${Object.entries(labels).map(([id,label])=>btn('category',label,'',`data-category="${id}" aria-pressed="${category===id}"`)).join('')}</div>
-      <div class="cr-stock-scene" data-storage="${category==='milk'?'chilled':category==='supplies'?'supplies':'pantry'}"><div class="cr-stock-main"><div class="cr-stock-sign">${['A fresh start begins here','Back in business','The neighborhood is noticing','A café worth coming back to'][game.visualLevel]}</div>
-      <div class="cr-shelves">${products.map(i=>{
+    const expiring=game.expiringItems();
+    const groups=Object.keys(INVENTORY_GROUPS),rows=[];
+    for(let n=0;n<groups.length;n+=2)rows.push(groups.slice(n,n+2));
+    const shelf=group=>{
+      const products=INVENTORY_ITEMS.filter(i=>i.group===group);
+      return `<section class="cr-shelf-group" data-shelf="${group}" style="--slots:${products.length}" aria-labelledby="cr-shelf-${group}"><h2 id="cr-shelf-${group}">${labels[group]}</h2><div class="cr-shelf-items">${products.map(i=>{
         const fresh=game.stock(i.name),expired=game.spoiled(i.name),ice=game.frozen(i.name),low=fresh<=Math.max(game.reorderPoint,Math.ceil(game.rate(i.name)*12));
-        const soon=expiring.find(e=>e.name===i.name),status=expired?'expired':fresh===0?'empty':fresh===1?'critical':low?'low':'healthy';
-        return `<button class="cr-stock-item ${status} ${soon?'expiring-soon':''}" data-action="inspect" data-product="${esc(i.name)}" data-stock-count="${fresh+ice+expired}" draggable="true"><span class="cr-product-art">${productArt(i.name)}</span><b>${esc(i.name)}</b><span class="cr-stock-tag">${expired?` EXPIRED · ${expired}`:fresh?`${fresh} fresh${fresh===1?' · CRITICAL':low?' · LOW':''}`:ice?`${ice} frozen`:'OUT OF STOCK'}</span>${soon?`<small class="cr-expiry-tag">${uiIcon('warning')} ${soon.qty} expire in 1 day</small>`:game.incoming(i.name)?'<small> On the way</small>':!expired&&low?'<small>Reorder recommended</small>':''}</button>`;
-      }).join('')}</div>
-      <div class="cr-stock-floor"><span>${uiIcon(game.visualLevel>1?'leaf':'shop')} <small>Green = healthy · Yellow = low · Red = empty<br>Striped tags = expired; discard</small></span>${btn('bin',uiIcon('bin')+'<small>Expired goods bin</small>','cr-bin')}</div></div>${serviceWindow()}</div>
-      <div class="cr-work-note">Select a product to check dates, reorder or discard; dragging to the bin also discards expired stock.</div>`;
+        const soon=expiring.find(e=>e.name===i.name),incoming=game.incoming(i.name),status=expired?'expired':fresh===0?'empty':fresh===1?'critical':low?'low':'healthy';
+        const tag=expired?`${expired} EXPIRED`:fresh?`${fresh}${fresh===1?' · CRITICAL':low?' · LOW':' ready'}`:ice?`${ice} frozen`:'OUT OF STOCK';
+        const note=soon?`${soon.qty} expire in 1 day`:expired&&fresh?`${fresh} ready`:incoming?`${incoming} on the way`:fresh&&ice?`${ice} frozen`:'';
+        return `<button type="button" id="cr-stock-${INVENTORY_ITEMS.indexOf(i)}" class="cr-stock-item ${status} ${soon?'expiring-soon':''}" data-action="inspect" data-product="${esc(i.name)}" data-stock-count="${fresh+ice+expired}" draggable="true" aria-label="${esc(i.name)}. ${fresh} ready to use, ${ice} frozen, ${expired} expired. ${esc(tag)}.${note?' '+esc(note)+'.':''}"><span class="cr-product-art">${shelfArt(i)}</span><b>${esc(i.name)}</b><span class="cr-stock-tag">${tag}</span><small class="cr-shelf-note ${soon?'cr-expiry-tag':''}">${note}</small></button>`;
+      }).join('')}</div></section>`;
+    };
+    return `<div class="cr-work-title cr-stock-heading"><div><h1>Your stockroom</h1><span>${INVENTORY_ITEMS.length} items · select to inspect or reorder</span></div><div class="cr-stock-tools"><span class="cr-health">${game.health}% stock health</span>${btn('bin',uiIcon('bin')+'<small>Expired goods bin</small>','cr-bin','title="Drag expired stock here, or select an item to discard."')}</div></div>
+      <div class="cr-stock-scene cr-unified-stock"><div class="cr-stock-main"><div class="cr-shelf-wall">${rows.map(row=>`<div class="cr-shelf-row" style="--shelf-columns:${row.map(group=>`${INVENTORY_ITEMS.filter(i=>i.group===group).length}fr`).join(' ')}">${row.map(shelf).join('')}</div>`).join('')}</div>
+      </div>${serviceWindow()}</div>`;
   }
   function inspect(name) {
     selected=name;inspected=name;if(name==='Whole Milk'&&game.tutorial.stockOpened)game.tutorial.inspected=true;if(name==='Cup'&&!game.expiredCount())game.tutorial.missing=true;
@@ -503,7 +526,7 @@
     } else drawUnpack();
   }
   function finishDelivery(id) {
-    if(game.shelve(id,true)){tab='stock';category='coffee';closeDialog();drawTab();toast('Stock stored; older stock is used first (FIFO).');checkEvents();}
+    if(game.shelve(id,true)){tab='stock';closeDialog();drawTab();toast('Stock stored; older stock is used first (FIFO).');checkEvents();}
   }
   function menuView() {
     const unlocked=MENU.filter(p=>p.day<=game.day&&p.kind===(menuSection==='drinks'?'drink':'bakery'));
@@ -702,7 +725,6 @@
     else if(a==='resume-save')resumeSave();
     else if(a==='close')closeDialog();
     else if(a==='tab'){tab=d.tab;game.observe('tab',tab);const step=game.tutorialStep();if(tab==='stock'&&step==='stock')game.tutorial.stockOpened=true;if(tab==='supply'&&step==='suppliers')game.tutorial.suppliersOpened=true;if(tab==='menu'&&step==='menu')game.tutorial.menuSeen=true;if(tab==='trends'&&step==='trends')game.tutorial.trendsSeen=true;drawTab();}
-    else if(a==='category'){category=d.category;drawTab();}
     else if(a==='inspect')inspect(d.product);
     else if(a==='skip-guide'){game.skipTutorial();closeDialog(false);drawTab();}
     else if(a==='trash-selected'){const n=inspected;closeDialog();trashProduct(n);}
@@ -713,7 +735,7 @@
     }
     else if(a==='confirm-discard'){game.discard(d.name,Number(d.lot));closeDialog();toast('Usable stock discarded and recorded as waste.',false);}
     else if(a==='rotate'){game.rotate(inspected);closeDialog();toast(game.lastExplanation);}
-    else if(a==='bin'){category='rescue';drawTab();toast('Drag expired stock here or discard it from its product view.');}
+    else if(a==='bin'){toast('Drag expired stock here or discard it from its product view.');}
     else if(a==='order-selected'){selected=inspected;tab='supply';frozen=false;closeDialog();}
     else if(a==='supplier'){
       if(cart.length){
@@ -775,7 +797,7 @@
     else if(a==='confirm-urgent')purchaseUrgent(Number(d.size),true);
     else if(['dismiss-expiry','view-expiry','menu-expiry'].includes(a)) {
       game.dismissExpiry(d.name);
-      if(a==='view-expiry'){tab='stock';category=item(d.name).group;drawTab();inspect(d.name);}
+      if(a==='view-expiry'){tab='stock';drawTab();inspect(d.name);}
       if(a==='menu-expiry'){tab='menu';const p=MENU.find(p=>p.day<=game.day&&p.recipe.includes(d.name));menuSection=p?.kind==='bakery'?'bakery':'drinks';menuPage=p?Math.floor(MENU.filter(v=>v.day<=game.day&&v.kind===p.kind).findIndex(v=>v.id===p.id)/4):0;drawTab();}
       drawFeedback();
     }
@@ -790,7 +812,7 @@
     else if(a==='operations-plan'){if(game.phase==='planning')operationsPlan();else toast('Planning is complete for this shift. Review the outcomes after closing.');}
     else if(a==='fix-opening'){
       closeDialog(false);
-      if(game.expiredCount()){tab='stock';category='rescue';}
+      if(game.expiredCount())tab='stock';
       else if(game.day===1&&!game.learning.events.some(e=>e.kind==='fifo')&&game.deliveries.some(d=>d.arrived&&!d.shelved)){deliveries();return;}
       else if([2,3,4].includes(game.day)){tab='menu';menuSection=game.day===3?'bakery':'drinks';}
       else {tab='supply';if(game.lesson.plan?.supplier)supplier=game.lesson.plan.supplier;}
@@ -815,7 +837,7 @@
     else if(a==='brief')briefing();
     else if(a==='event-choice'){const problem=game.chooseEvent(d.choice);if(problem)error(problem);else{closeDialog();toast(game.lastExplanation);}}
     else if(a==='report')report();
-    else if(a==='next-day'){if(game.nextDay()){cart=[];recipeTargets={};category='rescue';tab='stock';closeDialog(false);briefing();drawTab();}}
+    else if(a==='next-day'){if(game.nextDay()){cart=[];recipeTargets={};tab='stock';closeDialog(false);briefing();drawTab();}}
     else if(a==='ending')ending();
     else if(a==='upgrades'){upgradePage=0;upgrades();}
     else if(a==='upgrade-prev'||a==='upgrade-next'){upgradePage+=a==='upgrade-prev'?-1:1;upgrades();}
@@ -828,7 +850,7 @@
     else if(a==='exit')dialog('exit','Save your spot?',`<p>Resume this saved campaign from the mode menu.</p>${saveError?'<p class="cr-error">Browser storage is unavailable. Progress cannot be saved on this device.</p>':''}`,btn('exit-now','Save & exit','cr-primary')+btn('close','Keep playing'));
     else if(a==='exit-now'){pausePlanning();save();$('#cr-modal')?.remove();roles();return;}
     else if(a==='restart-confirm')dialog('restart','Start a fresh five-day rescue?',`<p>This replaces your Inventory Manager save in this browser.</p>`,btn('restart','Start new campaign','cr-primary')+btn('close','Keep this campaign'));
-    else if(a==='restart'){pausePlanning();planningReady=false;planningBlocker='';game=new InventorySim();window.inventoryGame=game;tab='stock';category='rescue';cart=[];recipeTargets={};feedbackMessage=null;dialogState=null;render();intro(0);}
+    else if(a==='restart'){pausePlanning();planningReady=false;planningBlocker='';game=new InventorySim();window.inventoryGame=game;tab='stock';cart=[];recipeTargets={};feedbackMessage=null;dialogState=null;render();intro(0);}
     updateHUD();save();
   }
   function handleChange(e) {
