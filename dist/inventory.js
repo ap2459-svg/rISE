@@ -12,7 +12,7 @@
   let game=null,tab='stock',category='rescue',selected='Whole Milk',supplier='quick',qty=6,frozen=false,express=false,cart=[];
   let menuPage=0,menuSection='drinks',speed=1,dialogState=null,lastFrame=0,lastPaint=0,lastSave=0,lastXP=0,saveError=false,audio;
   let inspected=null,upgradePage=0,dragged=null,unpacking=null,recipeTargets={},recipeItem='latte',feedbackMessage=null;
-  let cartComparison=null;
+  let cartComparison=null,emptyStockFeedback='';
 
   function uiIcon(key) {
     const shapes={
@@ -134,7 +134,7 @@
     const previous=savedGame();
     game=previous||new InventorySim();window.inventoryGame=game;
     supplier=previous?.tutorial.selectedSupplier||'quick';
-    tab='stock';category='rescue';cart=previous?.tutorial.cart?.map(l=>({...l}))||[];recipeTargets={...(previous?.tutorial.recipeTargets||{})};feedbackMessage=null;speed=1;dialogState=null;
+    emptyStockFeedback='';tab='stock';category='rescue';cart=previous?.tutorial.cart?.map(l=>({...l}))||[];recipeTargets={...(previous?.tutorial.recipeTargets||{})};feedbackMessage=null;speed=1;dialogState=null;
     if(previous&&!game.tutorial.ordered&&!cart.length){game.tutorial.cartAdded=false;game.tutorial.reviewed=false;}
     render();
     if(previous) {
@@ -284,12 +284,17 @@
     const html=tab==='stock'?stockroom():tab==='supply'?supplies():tab==='menu'?menuView():trends();
     patch('#cr-workspace',html);highlightTour();
   }
+  function emptyStockControls() {
+    const plan=game.emptyStockPlan(cart,supplier,express);
+    const explanation=plan.skipped.map(s=>`${s.name}: ${s.reason}`).join(' ');
+    return `<div class="cr-empty-restock">${btn('add-empty-stock','Add all out-of-stock items to cart','cr-primary',plan.lines.length?'':'disabled')}<p class="cr-note" role="status">${esc(emptyStockFeedback||explanation||(!plan.lines.length?'No out-of-stock items need adding.':'Uses suggested quantities; existing cart items are kept.'))}</p></div>`;
+  }
   function stockroom() {
     const expiring=game.expiringItems(),care=INVENTORY_ITEMS.filter(i=>game.spoiled(i.name)||expiring.some(e=>e.name===i.name));
     let products=category==='rescue'?(care.length?care.slice(0,6):INVENTORY_ITEMS.filter(i=>game.activeIngredients().includes(i.name)&&game.stock(i.name)<=Math.max(2,Math.ceil(game.rate(i.name)*12))).slice(0,6)):INVENTORY_ITEMS.filter(i=>i.group===category);
     if(!products.length)products=INVENTORY_ITEMS.filter(i=>game.activeIngredients().includes(i.name)).slice(0,6);
     return `<div class="cr-work-title"><div><span class="cr-kicker">MAKE ROOM FOR A COMEBACK</span><h1>Your stockroom</h1></div><span class="cr-health">${game.health}% stock health</span></div>
-      <div class="cr-category-tabs" role="group" aria-label="Stock categories">${Object.entries(labels).map(([id,label])=>btn('category',label,'',`data-category="${id}" aria-pressed="${category===id}"`)).join('')}</div>
+      ${emptyStockControls()}<div class="cr-category-tabs" role="group" aria-label="Stock categories">${Object.entries(labels).map(([id,label])=>btn('category',label,'',`data-category="${id}" aria-pressed="${category===id}"`)).join('')}</div>
       <div class="cr-stock-scene"><div class="cr-stock-sign">${['A fresh start begins here','Back in business','The neighborhood is noticing','A café worth coming back to'][game.visualLevel]}</div><div class="cr-window">${uiIcon("sun")}</div>
       <div class="cr-shelves">${products.map(i=>{
         const fresh=game.stock(i.name),expired=game.spoiled(i.name),ice=game.frozen(i.name),low=fresh<=Math.max(game.reorderPoint,Math.ceil(game.rate(i.name)*12));
@@ -330,7 +335,7 @@
     const comparisonHtml=comparison?`<p class="cr-cart-comparison" role="status">Supplier change: ${money(comparison.before.total)} → ${money(comparison.after.total)}<b>${comparison.difference<-.005?`Save ${money(-comparison.difference)}`:comparison.difference>.005?`${money(comparison.difference)} more`:'Same total price'}</b></p>`:'';
     return `<div class="cr-work-title"><div><span class="cr-kicker">BUY WHAT YOUR MENU NEEDS</span><h1>Order supplies</h1></div><span class="cr-health" id="cr-spendable">${money(game.spendable)} available</span></div>
       <div class="cr-order-layout"><div class="cr-shopping"><div class="cr-draft">${btn('recipe-picker','Plan a menu item')}${assistantButton()}${btn('draft-small','Small batch · 8 drinks')}${btn('draft-buffer','Buffer · 12 drinks')}</div>
-      <label class="cr-select">Product<select id="cr-product">${Object.entries(INVENTORY_GROUPS).map(([group,names])=>`<optgroup label="${labels[group]}">${names.map(n=>`<option ${n===selected?'selected':''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      ${emptyStockControls()}<label class="cr-select">Product<select id="cr-product">${Object.entries(INVENTORY_GROUPS).map(([group,names])=>`<optgroup label="${labels[group]}">${names.map(n=>`<option ${n===selected?'selected':''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select></label>
       <div class="cr-shopping-meta"><span id="cr-shopping-stock">${productArt(i.name)} ${game.stock(selected)} fresh · ${pending} incoming</span><span id="cr-spaces">${game.capacity(selected)-game.occupied(selected)-pending} shelf spaces</span></div>
       <div class="cr-suppliers">${supplierCards()}</div>
       <div class="cr-pack-row">${i.group==='bakery'?(game.strategy==='outsource'?'<span>Ready to sell · bakery handles baking and freshness</span>':btn('pack','Ready-made','',`data-frozen="false" aria-pressed="${!frozen}"`)+btn('pack','Frozen · bake first','',`data-frozen="true" aria-pressed="${frozen}"`)):'<span>Coffee first. Bakery can stay small.</span>'}<label><input type="checkbox" id="cr-express" ${express?'checked':''}> Express shipping (+fee)</label></div>
@@ -574,6 +579,7 @@
   function handleClick(e) {
     const target=e.target.closest('[data-action]');if(!target||target.disabled||!game)return;
     const a=target.dataset.action,d=target.dataset;
+    if(a!=='add-empty-stock')emptyStockFeedback='';
     if(a==='intro-next')intro(1);
     else if(a==='intro-done'){game.introSeen=true;game.briefed=true;tourIntro();}
     else if(a==='tour-begin'){closeDialog(false);drawTab();}
@@ -610,6 +616,12 @@
     }
     else if(a==='qty-down'||a==='qty-up'){qty=Math.max(1,Math.min(100,qty+(a==='qty-up'?1:-1)));drawTab();}
     else if(a==='pack'){frozen=d.frozen==='true';drawTab();}
+    else if(a==='add-empty-stock'){
+      const plan=game.emptyStockPlan(cart,supplier,express);
+      emptyStockFeedback=`${plan.lines.length} out-of-stock ${plan.lines.length===1?'item added or topped up':'items added or topped up'} in your cart.`;
+      if(plan.skipped.length)emptyStockFeedback+=' '+plan.skipped.map(s=>`${s.name}: ${s.reason}`).join(' ');
+      addToCart(plan.lines);
+    }
     else if(a==='add-cart'){
       const amount=Number($('#cr-qty').value);
       if(!Number.isInteger(amount)||amount<1||amount>100){toast('Choose a whole quantity from 1 to 100.',false);return;}
@@ -744,6 +756,7 @@
     patch('#cr-dock',`${uiIcon('box')} <b>${ready?'Supplies arrived!':late?'Delivery delayed':pending.length?`${pending.length} delivery pending`:'Delivery dock'}</b><small>${ready?'Click to shelve':late?'Check your safety stock':pending.length?arrivalText(nextDelivery):'No orders in transit'}</small>`);
     drawFeedback();
     patch('#cr-live-stats',`<span><b>${game.metrics.served}</b> served</span><span><b>${game.metrics.lost}</b> lost</span>`);
+    document.querySelectorAll('[data-action="add-empty-stock"]').forEach(b=>{b.disabled=!game.emptyStockPlan(cart,supplier,express).lines.length;});
     if($('#cr-spendable'))$('#cr-spendable').textContent=`${money(game.spendable)} available`;
     if($('#cr-shopping-stock'))$('#cr-shopping-stock').innerHTML=`${productArt(selected)} ${game.stock(selected)} fresh · ${game.incoming(selected)} incoming`;
     if($('#cr-spaces'))$('#cr-spaces').textContent=`${game.capacity(selected)-game.occupied(selected)-game.incoming(selected)} shelf spaces`;

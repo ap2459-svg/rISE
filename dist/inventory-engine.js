@@ -296,6 +296,32 @@
       const shipping=sum(Object.values(groups).map(g=>(g.express?5:1.25)*(this.upgrades.includes('ordering')?.5:1)));
       return {goods,shipping,total:goods+shipping};
     }
+    emptyStockPlan(cart=[],supplier='quick',express=false) {
+      // Return only deficits so the shared additive cart path stays idempotent.
+      // Frozen usable stock is not an empty shelf; expired lots still occupy space.
+      const lines=[],skipped=[];
+      for(const i of ITEMS) {
+        const name=i.name;
+        if(this.stock(name)||this.frozen(name))continue;
+        const existing=cart.filter(l=>l.name===name),inCart=sum(existing.map(l=>l.qty));
+        const target=Math.max(1,this.suggested(name)||6),needed=Math.max(0,target-inCart);
+        if(!needed)continue;
+        let reason='';
+        const frozen=i.group==='bakery'&&this.strategy==='inhouse';
+        const line=existing[0]||{name,supplier,frozen,express};
+        if(!['planning','shift'].includes(this.phase))reason='Ordering opens again tomorrow.';
+        else if(existing.some(l=>!!l.frozen!==frozen)&&i.group==='bakery')reason='Change the existing cart pack to match your bakery strategy.';
+        const space=Math.max(0,this.capacity(name)-this.occupied(name)-this.incoming(name)-inCart);
+        const qty=Math.min(needed,space,200-(line.qty||0));
+        if(!reason&&qty<=0)reason='No shelf space remains; clear stock or wait for deliveries.';
+        if(!reason&&!this.offer(name,line.supplier,(line.qty||0)+qty,!!line.frozen,!!line.express))reason='The selected supplier or pack is unavailable.';
+        if(!reason&&cart.length+lines.filter(l=>!cart.some(c=>c.name===l.name)).length>=60&&!existing.length)reason='The cart has reached its item limit.';
+        if(reason){skipped.push({name,reason});continue;}
+        lines.push({...line,qty});
+        if(qty<needed)skipped.push({name,reason:`Added ${qty}; ${needed-qty} more will not fit on the shelf or in this cart line.`});
+      }
+      return {lines,skipped};
+    }
     repriceCart(cart,supplierId) {
       if(!this.supplier(supplierId))return null;
       const before=this.quote(cart);if(!before)return null;
