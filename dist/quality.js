@@ -6,10 +6,10 @@ function presentationFor(o){if(!o?.toppingStrokes?.length)return {score:0,note:'
 const qualityFinish=QueueCafe.prototype.finishToppings;
 QueueCafe.prototype.finishToppings=function(o=this.active){const ok=qualityFinish.call(this,o);if(ok){o.presentationScore=this.tutorial?100:presentationFor(o).score;o.fills.topping=Math.min(o.fills.topping,o.presentationScore);}return ok;};
 const qualityRetry=QueueCafe.prototype.retry;
-QueueCafe.prototype.retry=function(k,o=this.active){const r=qualityRetry.call(this,k,o);if(o)delete o.presentationScore;return r;};
+QueueCafe.prototype.retry=function(k,o=this.active){if(this.helperOwns(o))return;const r=qualityRetry.call(this,k,o);if(o)delete o.presentationScore;return r;};
 const QualityBase=CampaignCafe;
 CampaignCafe=class extends QualityBase{
- serve(o=this.active,helper=false){if(!this.ready(o))return null;const score=this.scores(o).accuracy;const r=super.serve(o,helper);if(r){this.qualityAttempts??=[];this.qualityAttempts.push(score);}return r;}
+ serve(o=this.active,helper=false){if(!this.canServe(o))return null;const score=this.scores(o).accuracy;const r=super.serve(o,helper);if(r){this.qualityAttempts??=[];this.qualityAttempts.push(score);}return r;}
  report(){const r=super.report();if(this.qualityAttempts?.length)r.quality=this.qualityAttempts.reduce((a,b)=>a+b,0)/this.qualityAttempts.length;return r;}
 };
 // Existing illustrated sprites plus the café's alternate character sheet.
@@ -25,7 +25,7 @@ drawToppings=function(){qualityDraw();const o=sim?.orders.find(o=>o.id===station
 const qualityGesture=startToppingGesture;
 startToppingGesture=function(ev,target){qualityGesture(ev,target);const ghost=document.querySelector('.topping-ghost');if(ghost&&toppingTool!=='Cinnamon'){ghost.classList.add('dispenser');ghost.classList.remove('sauce-bottle');ghost.dataset.kind=toppingTool;}};
 const qualityBaking=updateBaking;
-updateBaking=function(){qualityBaking();if(stationPanel?.key!=='baking'||sim.tutorial)return;document.querySelectorAll('[data-slot]').forEach(el=>{const s=sim.ovenSlots[+el.dataset.slot];const q=s?ovenQuality(s,sim.time):null;el.classList.toggle('food-burned',!!q?.burned);el.classList.toggle('food-warning',!!s?.ready&&!q.burned);if(s?.ready)el.querySelector('strong').textContent=q.burned?`BURNED · ${q.score}% quality · collect`:`Collect now · burns in ${Math.ceil(15-q.late)}s`;});const result=sim.orders.find(o=>o.id===stationPanel.id)?.bakeryResult;if(result)document.querySelector('#oven-feedback').textContent=`${result.burned?'Burned food':'Collected food'} · Quality ${result.score}%. ${result.score<90?'Use Remake, or the customer will return it.':'Ready to serve.'}`;};
+updateBaking=function(){qualityBaking();if(stationPanel?.key!=='baking'||sim.tutorial)return;document.querySelectorAll('[data-slot]').forEach(el=>{const s=sim.ovenSlots[+el.dataset.slot];const q=s?ovenQuality(s,sim.time):null;el.classList.toggle('food-burned',!!q?.burned);el.classList.toggle('food-warning',!!s?.ready&&!q.burned);if(s?.ready)el.querySelector('strong').textContent=q.burned?`BURNED · ${q.score}% quality · collect`:`Collect now · burns in ${Math.ceil(15-q.late)}s`;});const result=sim.orders.find(o=>o.id===stationPanel.id)?.bakeryResult;if(result)document.querySelector('#oven-feedback').textContent=`${result.burned?'Burned food':'Collected food'} · Quality ${result.score}%. ${result.score<90?'Remake for better quality, or serve with a quality penalty.':'Ready to serve.'}`;};
 const qualityOpenBaking=openBaking;
 openBaking=function(){qualityOpenBaking();if(stationPanel?.key==='baking'&&!sim.tutorial)document.querySelector('.baking-dialog header small').textContent=`${sim.ovenSlots.length} slots · ${sim.upgrades.has('oven')?25:45}s bake · collect within 8s for perfect quality`;};
 const qualityUpdate=update;
