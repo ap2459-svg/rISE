@@ -729,3 +729,20 @@
   .cr-game .cr-stock-tools .cr-bin{min-height:40px}
 }
 @media(max-width:360px){.cr-shelf-items{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Setup keeps the next action beside its explanation; the deadline stays visible in dialogs. */
+.cr-game #cr-setup-note{font-size:12px;line-height:1.3;color:#405e44;font-weight:800;max-width:720px}
+.cr-game #cr-play{min-width:160px;max-width:245px;white-space:normal}
+.cr-dialog-timer{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:6px 10px;margin-top:6px;border:1px solid #c5a76b;border-radius:8px;background:#fff0c8;color:#4b3c25;font-size:12px}
+.cr-dialog-timer b{font-size:18px;font-variant-numeric:tabular-nums;color:#365b49}
+.cr-overlay #cr-plan-problem{flex:1 1 100%;font-size:14px;line-height:1.4;margin:0;color:#71482b}
+.cr-game .cr-unified-stock .cr-disposal{display:flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;width:100%;min-height:78px;padding:4px;background:linear-gradient(#f5e7c4,#dfc496);border:2px solid #997148;border-radius:10px;box-shadow:inset 0 2px #fff6db,0 3px #74503333;transform:none}
+.cr-game .cr-disposal>svg{width:55px;height:65px;flex-shrink:0;pointer-events:none}
+.cr-game .cr-disposal>span{min-width:0;text-align:left;pointer-events:none}
+.cr-game .cr-disposal b{display:block;font-size:12px;line-height:1.2;color:#3c4936}
+.cr-game .cr-disposal small{display:block;font-size:10px;line-height:1.25;margin-top:4px;font-weight:600}
+.cr-game .cr-unified-stock .cr-disposal.can-drop{border-color:#57784f;outline:2px dashed #57784f;outline-offset:-5px}
+.cr-game .cr-unified-stock .cr-disposal.is-dragover{outline:4px solid #285b46;outline-offset:1px;background:#d7edc2;box-shadow:0 0 0 6px #72a35444}
+.cr-game .cr-unified-stock .cr-disposal:focus-visible{outline:3px solid #285b46;outline-offset:2px}
+@media(max-width:1200px){.cr-game .cr-unified-stock .cr-disposal{min-height:68px;justify-content:flex-end;padding:3px 14px}.cr-game .cr-disposal>svg{width:50px;height:58px}.cr-game .cr-disposal b{font-size:14px}.cr-game .cr-disposal small{font-size:11px}}
+@media(max-width:700px){.cr-game #cr-setup-note{font-size:11px}.cr-game #cr-play{min-width:150px}.cr-dialog-timer{font-size:11px}}

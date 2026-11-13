@@ -50,7 +50,7 @@ const url=process.env.INVENTORY_PREVIEW_URL||pathToFileURL(path.resolve(__dirnam
    assert.deepEqual(await page.locator('.cr-stock-item').evaluateAll(nodes=>nodes.map(n=>({name:n.dataset.product,group:n.closest('[data-shelf]').dataset.shelf}))),positions);
    if(viewport.width===1366){
     await page.locator('.cr-stock-item[data-product="Whole Milk"]').dragTo(page.locator('[data-action="bin"]'));
-    assert.equal(await page.evaluate(()=>inventoryGame.spoiled('Whole Milk')),0,'dragging expired stock to the header bin still discards it');
+    assert.equal(await page.evaluate(()=>inventoryGame.spoiled('Whole Milk')),0,'dragging expired stock to the trash can still discards it');
     assert.equal(await page.locator('.cr-stock-item[data-product="Whole Milk"]').count(),1,'discarding leaves the empty shelf position');
    }
    // Update quantities through the existing engine; rendering must preserve positions.
