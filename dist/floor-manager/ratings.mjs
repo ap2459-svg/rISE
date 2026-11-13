@@ -1,3 +1,3 @@
-export function customerStars(report){return Math.max(0,Math.min(5,report?.missionStars??(Number(report?.satisfaction)||0)/20));}
+export function customerStars(report){return Math.max(0,Math.min(5,(Number(report?.satisfaction)||0)/20));}
 export function starsMarkup(report,label='Customer rating'){const rating=customerStars(report);return `<div class="restaurant-rating" role="img" aria-label="${label}: ${rating.toFixed(1)} out of 5"><div class="five-stars" aria-hidden="true"><span>★★★★★</span><span class="filled-stars" style="width:${rating/5*100}%">★★★★★</span></div><strong>${rating.toFixed(1)} / 5</strong></div>`;}
 export function ratingChange(report,previous){if(!previous)return '';const delta=customerStars(report)-customerStars(previous);return Math.abs(delta)<.05?'Same rating as last shift':`${delta>0?'+':'−'}${Math.abs(delta).toFixed(1)} stars since last shift`;}

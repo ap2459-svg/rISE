@@ -1,10 +1,10 @@
-import {recognizeAreas} from './request-system.mjs?v=crowds-40';
-import {footprint} from './layout.mjs?v=crowds-40';
+import {recognizeAreas} from './request-system.mjs?v=chair-shortcut-31';
+import {footprint} from './layout.mjs?v=chair-shortcut-31';
 
 export const CAFE_ZONES = {
  social: {name:'Social corner',color:'#d58a50',needs:'3+ reachable seats together',items:['roundSet','longSet','booth','plant']},
- focus: {name:'Focus space',color:'#6888b7',needs:'Quiet desks · light · charging',items:['soloSet','smallSet','comfortableChair','light','tableOutlet','outlet']},
- cozy: {name:'Cozy lounge',color:'#b47d9c',needs:'Comfortable lounge seating',items:['armchair','plant','light']}
+ focus: {name:'Focus space',color:'#6888b7',needs:'Quiet desks · light · charging',items:['soloSet','smallSet','comfortableChair','deskLamp','tableOutlet','outlet']},
+ cozy: {name:'Cozy lounge',color:'#b47d9c',needs:'Comfortable lounge seating',items:['armchair','sofa','rug','floorLamp']}
 };
 
 // Use the mission's actual area recognition, never a manually assigned zone.

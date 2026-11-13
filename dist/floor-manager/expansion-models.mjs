@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import {paintedPatch} from './painted.mjs?v=crowds-40';
+import {paintedPatch} from './painted.mjs?v=chair-shortcut-31';
 
 // All dimensions are metres. Origins sit on the floor and fronts face local -Z.
 const C={ink:0x3d3029,walnut:0x82532f,cream:0xe8dbc1,sage:0x74876a,dark:0x344a43,brass:0xb59050,terra:0xb36745};

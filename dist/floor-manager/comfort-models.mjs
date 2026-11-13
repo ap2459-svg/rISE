@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import {paintedPatch} from './painted.mjs?v=crowds-40';
+import {paintedPatch} from './painted.mjs?v=chair-shortcut-31';
 
 // Floor origins; seats face local -Z unless their metadata says otherwise.
 // These silhouettes use the café's painted timber, olive upholstery and ink edges.
