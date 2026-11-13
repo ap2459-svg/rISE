@@ -19,17 +19,15 @@ const url=pathToFileURL(path.resolve(__dirname,'../dist/index.html')).href;
       assert.equal(await page.locator('.cr-service-view .cr-customer-art').count(),0,'preparation does not invent customers');
       assert.match(await page.locator('.cr-service-view').innerText(),/Preparing to open/);
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no horizontal page overflow');
-      for(const category of ['rescue','milk','supplies','coffee']){
-        await page.click(`[data-category="${category}"]`);
-        assert(await page.locator('.cr-stock-item').count()>0);
-        assert(await page.locator('.cr-stock-item').evaluateAll(nodes=>nodes.every(n=>n.scrollWidth<=n.clientWidth+2)),'stock labels fit their buttons');
-      }
-      await page.click('[data-category="milk"]');await shot(page,'chilled-'+viewport.width);
+      assert.equal(await page.locator('.cr-stock-item').count(),27,'all products share one stockroom');
+      assert.equal(await page.locator('[data-action="category"]').count(),0,'no category navigation');
+      assert(await page.locator('.cr-stock-item').evaluateAll(nodes=>nodes.every(n=>n.scrollWidth<=n.clientWidth+2)),'stock labels fit their buttons');
+      await shot(page,'shelves-'+viewport.width);
       const inspect=page.locator('[data-action="inspect"][data-product="Whole Milk"]');
       await inspect.focus();await page.keyboard.press('Enter');
       assert(await page.getByRole('dialog').isVisible(),'stock is keyboard accessible');
       await shot(page,'inspect-'+viewport.width);await page.locator('#cr-modal [data-action="close"]').click();
-      await page.click('[data-category="rescue"]');await shot(page,'planning-'+viewport.width);
+      await shot(page,'planning-'+viewport.width);
 
       // Fixture preparation uses the same plan, order, delivery and FIFO methods as play.
       await page.evaluate(()=>{
@@ -65,7 +63,8 @@ const url=pathToFileURL(path.resolve(__dirname,'../dist/index.html')).href;
       await shot(page,'disappointed-'+viewport.width);
       await page.evaluate(()=>{
         const g=inventoryGame;g.seed=42;for(const lot of [...g.lots['Whole Milk']])g.discard('Whole Milk',lot.id);
-        g.customer();g.processCustomers();g.clock+=RESCUE.CONFIG.patience;g.processCustomers();
+        // Cross the deadline: paused fractional-frame fixtures have no next tick.
+        g.customer();g.processCustomers();g.clock+=RESCUE.CONFIG.patience+.01;g.processCustomers();
       });
       await paint(page);
       assert.match(await page.locator('.cr-service-view').innerText(),/Left · missing supplies/);
@@ -73,7 +72,7 @@ const url=pathToFileURL(path.resolve(__dirname,'../dist/index.html')).href;
       assert(await page.locator('[data-action="loss-details"]').isVisible(),'lost-sales controls stay available');
       assert(await page.evaluate(()=>{const view=document.querySelector('.cr-service-view').getBoundingClientRect(),speech=document.querySelector('.cr-service-view .cr-speech').getBoundingClientRect();return speech.top>=view.top&&speech.bottom<=view.bottom+1;}),'customer status and speech remain fully visible');
       await shot(page,'shortage-'+viewport.width);
-      assert(await page.evaluate(()=>document.querySelector('.cr-stock-floor').getBoundingClientRect().bottom<=document.querySelector('.cr-stock-scene').getBoundingClientRect().bottom+1),'stock controls stay inside the room during alerts');
+      assert(await page.evaluate(()=>document.querySelector('.cr-shelf-wall').getBoundingClientRect().bottom<=document.querySelector('.cr-stock-scene').getBoundingClientRect().bottom+1),'shelves stay inside the room during alerts');
       const state=()=>page.evaluate(()=>JSON.stringify({cash:inventoryGame.cash,lots:inventoryGame.lots,metrics:inventoryGame.metrics,seed:inventoryGame.seed,orders:inventoryGame.orders,reactions:inventoryGame.reactions,learning:inventoryGame.learning,deliveries:inventoryGame.deliveries}));
       const before=await state();await paint(page);await paint(page);
       assert.equal(await state(),before,'painting reactions never mutates the simulation');
