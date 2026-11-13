@@ -299,25 +299,38 @@ function accounting(g){
   assert.equal(g.tutorialStep(),'inspect');t.inspected=true;
   assert.equal(g.tutorialStep(),'clean');clear(g);
   assert.equal(g.tutorialStep(),'missing');t.missing=true;
+  assert.equal(g.tutorialStep(),'menu');t.menuSeen=true;
+  assert.equal(g.tutorialStep(),'recipe');t.recipeSeen=true;
+  assert.equal(g.tutorialStep(),'cart');t.cartAdded=true;
   assert.equal(g.tutorialStep(),'suppliers');t.suppliersOpened=true;
   assert.equal(g.tutorialStep(),'compare');t.compared=['budget','quick'];
-  assert.equal(g.tutorialStep(),'cart');t.cartAdded=true;
+  assert.equal(g.tutorialStep(),'plan');requiredPlan(g);
   assert.equal(g.tutorialStep(),'review');t.reviewed=true;
   assert.equal(g.tutorialStep(),'order');const cart=g.restockPlan(8);
   assert(cart.filter(l=>INVENTORY_ITEMS.find(i=>i.name===l.name).group==='bakery').every(l=>l.qty<=2));
   const before=g.cash,q=g.quote(cart);assert.equal(g.placeOrder(cart),null);near(g.cash,before-q.total,'tutorial order charged once');
   assert.equal(g.tutorialStep(),'delivery');waitPlanning(g);
-  assert.equal(g.tutorialStep(),'menu');t.menuSeen=true;
-  assert.equal(g.tutorialStep(),'recipe');t.recipeSeen=true;
   assert.equal(g.tutorialStep(),'trends');t.trendsSeen=true;
   assert.equal(g.tutorialStep(),'ready');
   g.menu.latte.enabled=false;
   assert.equal(g.tutorialStep(),'restock');assert.equal(g.completeTutorial(),false,'tutorial cannot finish without a usable drink');
   g.menu.latte.enabled=true;
   assert(g.completeTutorial());assert.equal(g.completeTutorial(),false);
-  g.briefed=true;fixtures['day-1-ready']=g.save();assert(g.open(),'tutorial does not bypass required plan');requiredPlan(g);assert.equal(g.open(),null);accounting(g);
+  g.briefed=true;fixtures['day-1-ready']=g.save();assert.equal(g.open(),null,'guided preparation includes the required plan');accounting(g);
   const skip=new InventorySim(9),prior=skip.cash;skip.skipTutorial();assert.equal(skip.cash,prior);assert.equal(skip.tutorialStep(),null);assert(skip.open(),'skipping cannot bypass food safety');
   assert(InventorySim.restore(skip.save()).tutorial.skipped);
+}
+// Tutorial recovery must not wait forever for cancelled or tomorrow-only orders.
+{
+  for(const scenario of ['tomorrow','cancelled']) {
+    const g=new InventorySim(9);clear(g);requiredPlan(g);
+    Object.assign(g.tutorial,{stockOpened:true,inspected:true,missing:true,menuSeen:true,recipeSeen:true,cartAdded:true,suppliersOpened:true,compared:['quick','budget'],reviewed:true});
+    assert.equal(g.placeOrder(g.restockPlan(8,'budget')),null);
+    if(scenario==='cancelled')assert.equal(g.deliveryDecision(g.deliveries[0].id,'refund'),null);
+    assert.equal(g.tutorialStep(),'restock',scenario+' routes back to supplies');
+    assert.equal(InventorySim.restore(g.save()).tutorialStep(),'restock');
+    assert.equal(g.completeTutorial(),false);
+  }
 }
 // Seven-day saves are not silently relabeled as five-day progress.
 {for(const version of [2,3,4,5]){const old=JSON.parse(new InventorySim(1).save());old.version=version;assert.equal(InventorySim.restore(JSON.stringify(old)),null);}assert(InventorySim.restore(new InventorySim(1).save()));}

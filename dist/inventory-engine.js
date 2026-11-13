@@ -379,16 +379,19 @@
       if(!t.inspected)return 'inspect';
       if(this.expiredCount())return 'clean';
       if(!t.missing)return 'missing';
-      if(!t.suppliersOpened)return 'suppliers';
-      if(t.compared.length<2)return 'compare';
-      if(!t.cartAdded)return 'cart';
-      if(!t.reviewed)return 'review';
-      if(!t.ordered)return 'order';
-      if(!t.shelved)return 'delivery';
       if(!t.menuSeen)return 'menu';
       if(!t.recipeSeen)return 'recipe';
-      if(!t.trendsSeen)return 'trends';
+      if(!t.cartAdded&&!t.ordered)return 'cart';
+      if(!t.suppliersOpened)return 'suppliers';
+      if(t.compared.length<2)return 'compare';
+      if(!this.lesson.plan)return 'plan';
+      if(!t.reviewed)return 'review';
+      if(!t.ordered)return 'order';
+      // A cancelled or tomorrow-only order must not trap the guide at the dock.
+      if(this.deliveries.some(d=>!d.cancelled&&!d.shelved&&d.dueDay<=this.day))return 'delivery';
       if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0))return 'restock';
+      if(this.planProblem())return 'restock';
+      if(!t.trendsSeen)return 'trends';
       return 'ready';
     }
     completeTutorial() {

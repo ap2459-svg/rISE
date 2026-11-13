@@ -451,3 +451,17 @@
 .cr-game .cr-guide b{font-size:15px;line-height:1.35}.cr-game .cr-guide .cr-guide-description{font-size:14px;line-height:1.4}.cr-game .cr-guide small{font-size:10px}.cr-game .cr-controls small{font-size:12px}.cr-game .cr-menu-card small,.cr-game .cr-menu-cost{font-size:13px}
 .cr-game .cr-suppliers{min-height:185px}.cr-game .cr-suppliers .cr-supplier{gap:3px;padding:6px}.cr-game .cr-supplier>b{min-height:0;line-height:1.2}.cr-game .cr-supplier-facts{gap:2px;line-height:1.2}.cr-game .cr-company-icon{width:28px;height:28px}.cr-game .cr-company-icon svg{width:26px;height:26px}.cr-game .cr-supplier>small{font-size:11px}
 @media(max-width:700px){.cr-game .cr-suppliers{min-height:210px}.cr-game .cr-supplier>b{font-size:12px}.cr-game .cr-supplier-facts{font-size:11px}.cr-game .cr-guide b{font-size:13px}.cr-game .cr-guide .cr-guide-description{font-size:12px}}
+/* Keep guidance and its escape controls reachable on small screens. */
+.cr-guide-actions{display:flex;flex-wrap:wrap;gap:6px;flex:0 0 auto}
+.cr-game .cr-guide-actions button{min-height:44px;max-width:none;white-space:normal}
+.cr-shopping{overflow-y:auto;overscroll-behavior:contain;padding-bottom:4px}
+#cr-dialog-guide{border-left:4px solid #be8f25;padding:10px;background:#fff1bd}
+@media(max-width:700px){
+  .cr-game:has(#cr-guide:not([hidden])){height:auto;min-height:100dvh}
+  .cr-game:has(#cr-guide:not([hidden])) .cr-work{flex:1 0 auto;min-height:420px}
+  .cr-guide{flex-wrap:wrap}.cr-guide>div:nth-child(2){flex:1 1 100%}
+  .cr-guide-actions{width:100%}.cr-guide-actions button{flex:1}
+  .cr-game:has(#cr-guide:not([hidden])) .cr-order-layout{min-height:520px}
+}
+@media(max-width:700px){.cr-game .cr-guide-actions button{font-size:12px}.cr-game .cr-nav{min-width:0}.cr-game .cr-nav>button{min-width:0;white-space:normal}.cr-game .cr-nav>button span{flex-shrink:0}}
+@media(max-width:400px){.cr-game .cr-nav>button{font-size:12px;padding:4px 2px;line-height:1.2}.cr-game .cr-nav>button span{display:none}}
