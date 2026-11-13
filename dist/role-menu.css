@@ -59,3 +59,6 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.role-resume {display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;padding:16px;background:#fff7e7;color:#342c24;border-radius:16px;z-index:1}
+.role-resume .big-btn {font-size:16px;min-height:44px}

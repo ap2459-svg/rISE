@@ -12,7 +12,7 @@
   let game=null,tab='stock',selected='Whole Milk',supplier='quick',qty=6,frozen=false,express=false,cart=[];
   let menuPage=0,menuSection='drinks',speed=1,dialogState=null,lastFrame=0,lastPaint=0,lastSave=0,lastXP=0,saveError=false,audio;
   let inspected=null,upgradePage=0,dragged=null,unpacking=null,recipeTargets={},recipeItem='latte',feedbackMessage=null;
-  let cartComparison=null;
+  let cartComparison=null,leaving=false;
   let planningTimeout=null,planningReady=false,planningBlocker='',openingInProgress=false,dragOverBin=false;
 
   function pausePlanning() {
@@ -20,7 +20,7 @@
     game?.pausePlanningClock();
   }
   function syncPlanning() {
-    if(!game||game.phase!=='planning'||!planningReady||!game.briefed){clearTimeout(planningTimeout);planningTimeout=null;return;}
+    if(!game||game.phase!=='planning'||dialogState?.key==='exit'||!planningReady||!game.briefed){clearTimeout(planningTimeout);planningTimeout=null;return;}
     game.resumePlanningClock();
     const remaining=game.planningTimeLeft();
     if(remaining===0){startShift(true);return;}
@@ -140,14 +140,20 @@
   };
 
   function save() {
-    if(!game) return;
+    if(!game) return false;
+    game.tutorial.view={tab,selected,supplier,qty,frozen,express,menuPage,menuSection,speed,recipeItem};
     capturePlanDraft();
     game.tutorial.cart=cart.map(l=>({...l}));
     game.tutorial.recipeTargets={...recipeTargets};
     game.tutorial.selectedSupplier=supplier;
     if(!game.tutorial.ordered&&!cart.length){game.tutorial.cartAdded=false;game.tutorial.reviewed=false;}
-    try { localStorage.setItem(SAVE_KEY,game.save()); saveError=false; }
-    catch { saveError=true; }
+    try {
+      const serialized=game.save();
+      if(!InventorySim.restore(serialized))throw new Error('Invalid save');
+      localStorage.setItem(SAVE_KEY,serialized);
+      if(localStorage.getItem(SAVE_KEY)!==serialized)throw new Error('Save verification failed');
+      saveError=false;return true;
+    } catch { saveError=true;return false; }
   }
   function savedGame() { try{return InventorySim.restore(localStorage.getItem(SAVE_KEY));}catch{return null;} }
   function legacySave() { try{return localStorage.getItem('rise.cafe-rescue.v2');}catch{return null;} }
@@ -179,13 +185,14 @@
     const overlay=document.createElement('div');overlay.id='cr-modal';overlay.className='cr-overlay';
     const tutorialStep=game?.tutorial.active?game.tutorialStep():null;
     if(tutorialStep&&!['intro','resume','tour-intro','briefing','tutorial-complete','tutorial-replay'].includes(key))body=`<p id="cr-dialog-guide" class="cr-note" role="status"></p>`+body;
-    if(tutorialStep&&!['intro','resume','tutorial-complete','tutorial-replay'].includes(key))footer+=btn('skip-guide','Skip tutorial','cr-text');
-    overlay.innerHTML=`<section class="cr-dialog ${key==='intro'?'cr-intro':''}" data-dialog="${key}" role="dialog" aria-modal="true" aria-labelledby="cr-dialog-title" tabindex="-1"><div class="cr-kicker">rISE CAFÉ · INVENTORY MANAGER</div>${game?.phase==='planning'&&planningReady?'<div class="cr-dialog-timer">Planning time remaining <b id="cr-dialog-time" role="timer"></b> · opens automatically</div>':''}<h2 id="cr-dialog-title">${title}</h2><div class="cr-dialog-body">${body}<p id="cr-dialog-error" class="cr-error" role="status"></p></div><footer>${footer}</footer></section>`;
+    if(tutorialStep&&!['intro','resume','tutorial-complete','tutorial-replay','exit'].includes(key))footer+=btn('skip-guide','Skip tutorial','cr-text');
+    overlay.innerHTML=`<section class="cr-dialog ${key==='intro'?'cr-intro':''}" data-dialog="${key}" role="dialog" aria-modal="true" aria-labelledby="cr-dialog-title" tabindex="-1"><div class="cr-kicker">rISE CAFÉ · INVENTORY MANAGER</div>${game?.phase==='planning'&&planningReady&&key!=='exit'?'<div class="cr-dialog-timer">Planning time remaining <b id="cr-dialog-time" role="timer"></b> · opens automatically</div>':''}<h2 id="cr-dialog-title">${title}</h2><div class="cr-dialog-body">${body}<p id="cr-dialog-error" class="cr-error" role="status"></p></div><footer>${footer}</footer></section>`;
     app.append(overlay);overlay.querySelector('section').focus();
-    overlay.onclick=handleClick;
+    overlay.onclick=e=>{if(key==='exit'&&e.target===overlay&&!leaving)closeDialog();else handleClick(e);};
     overlay.onchange=handleChange;
     overlay.oninput=handlePlanInput;
     overlay.onkeydown=e=>{
+      if(leaving){e.preventDefault();return;}
       if(e.key==='Escape'&&!['intro','delivery','unpack','event','ending','resume','tutorial-complete','tour-intro'].includes(key)){e.preventDefault();closeDialog();return;}
       if(e.key!=='Tab')return;
       const nodes=[...overlay.querySelectorAll('button,input,select,a[href]')].filter(n=>!n.disabled);
@@ -197,6 +204,8 @@
     highlightTour();
   }
   function closeDialog(resume=true) {
+    if(leaving)return;
+    lastFrame=0;
     capturePlanDraft();
     const prior=dialogState;dialogState=null;$('#cr-modal')?.remove();$('.cr-game')?.removeAttribute('inert');
     planningReady=true;
@@ -206,7 +215,7 @@
     drawTab();updateHUD();save();
   }
   function error(message) { const node=$('#cr-dialog-error');if(node)node.textContent=message;else toast(message,false); }
-  function start() {
+  function start(newGame=false) {
     pausePlanning();planningReady=false;planningBlocker='';
     unpacking=null;dragged=null;dragOverBin=false;
     sim=null;paused=false;modalKind=null;document.body.classList.remove('playing');
@@ -216,9 +225,20 @@
     supplier=previous?.tutorial.selectedSupplier||'quick';
     tab='stock';cart=previous?.tutorial.cart?.map(l=>({...l}))||[];recipeTargets={...(previous?.tutorial.recipeTargets||{})};feedbackMessage=null;speed=1;dialogState=null;
     if(previous&&!game.tutorial.ordered&&!cart.length){game.tutorial.cartAdded=false;game.tutorial.reviewed=false;}
-    render();
-    if(previous) {
-      dialog('resume',`The café is waiting for you`, `<div class="cr-character"><span>${uiIcon(game.info.face)}</span><p><b>Day ${game.day} of 5 · ${esc(game.info.title)}</b>Progress saved; an active planning deadline is kept.</p></div><div class="cr-stat-row"><span>Bank balance<b>${money(game.cash)}</b></span><span>Customer Rating<b>${rating()}</b></span></div>`,btn('resume-save','Resume rescue →','cr-primary')+btn('restart-confirm','Start a new rescue'));
+    const view=previous?.tutorial.view;
+    if(view){
+      if(['stock','supply','menu','trends'].includes(view.tab))tab=view.tab;
+      if(item(view.selected))selected=view.selected;
+      if(Number.isInteger(view.qty)&&view.qty>0)qty=view.qty;
+      frozen=!!view.frozen;express=!!view.express;
+      menuPage=view.menuPage||0;menuSection=view.menuSection||'drinks';
+      speed=[1,2,3].includes(view.speed)?view.speed:1;recipeItem=view.recipeItem||'latte';
+    }
+    lastFrame=0;leaving=false;render();
+    if(newGame&&previous){
+      dialog('restart','Start a fresh five-day rescue?','<p>This replaces this browser’s Inventory Manager save.</p>',btn('restart','New game','cr-primary')+btn('resume-save','Continue game'));
+    } else if(previous) {
+      dialog('resume',`The café is waiting for you`, `<div class="cr-character"><span>${uiIcon(game.info.face)}</span><p><b>Day ${game.day} of 5 · ${esc(game.info.title)}</b>Your decisions, stock, prices and deliveries are saved. The clock is paused.</p></div><div class="cr-stat-row"><span>Bank balance<b>${money(game.cash)}</b></span><span>Customer Rating<b>${rating()}</b></span></div>`,btn('resume-save','Resume rescue →','cr-primary')+btn('restart-confirm','Start a new rescue'));
     } else intro(0);
   }
   // Preserve the other role cards, routes and original event handlers.
@@ -226,15 +246,17 @@
   roles=function() {
     pausePlanning();planningReady=false;planningBlocker='';
     unpacking=null;dragged=null;dragOverBin=false;
-    if(game)save(); game=null;window.inventoryGame=null;dialogState=null;
+    game=null;window.inventoryGame=null;dialogState=null;
     document.body.classList.remove('inventory-playing');originalRoles();
     const card=[...document.querySelectorAll('.role-choice')].find(n=>n.querySelector('h2')?.textContent==='Inventory Manager');
     if(!card)return;
     card.classList.remove('locked');card.classList.add('play');card.querySelector('small')?.remove();
     card.querySelector('h2').textContent='Inventory Manager';
     card.querySelector('p').textContent='Stock the café through five days.';
-    card.insertAdjacentHTML('beforeend','<button id="inventory-start" class="big-btn">Play Inventory Manager →</button>');
-    $('#inventory-start').onclick=start;
+    const hasSave=!!savedGame();
+    card.insertAdjacentHTML('beforeend',`${hasSave?'<button id="inventory-continue" class="big-btn">Continue game</button>':''}<button id="inventory-start" class="big-btn ${hasSave?'gold':''}">New game</button>`);
+    $('#inventory-continue')?.addEventListener('click',()=>start());
+    $('#inventory-start').onclick=()=>start(true);
   };
   function intro() {
     dialog('intro','Help rISE Café recover in five days',`<p>Manage stock and spending; staff serve automatically after you open.</p><p><b>Your goal:</b> stock complete recipes, serve customers and recover the debt.</p><details><summary>Success & loss conditions</summary><p>After Day 5, “Café Saved” requires recovery balance ≥ $0, Customer Rating ≥ 2.5/5 and ≥ 70% of customers served.</p><p>To avoid “Café Closed”, meet those requirements or all four: recovery balance ≥ −$200, Customer Rating ≥ 1.75/5, ≥ 50% served and a profitable final day.</p><p>Recovery balance = bank balance + stock value − unpaid opening costs; a negative bank balance alone does not end the game.</p></details><p class="cr-note">Restock a Vanilla Latte in this tutorial; purchases and cleanup affect your saved campaign.</p>`,btn('intro-done','Start guided tutorial','cr-primary')+btn('skip-tour-intro','Skip tutorial'));
@@ -308,7 +330,7 @@
     document.body.classList.add('inventory-playing');
     app.innerHTML=`<main class="cr-game" data-level="${game.visualLevel}">
       <header class="cr-header"><div class="cr-brand">rISE Café<small>INVENTORY MANAGER</small></div><div class="cr-week" aria-label="Five day campaign">${DAYS.map((d,i)=>`<span data-day="${i+1}" title="${d.title}">${i+1}</span>`).join('')}</div>
-      <button data-action="money" class="cr-bank" id="cr-bank"></button><div class="cr-reputation" id="cr-reputation"></div>${btn('help','?','cr-icon','aria-label="How to play"')}${btn('exit','Exit')}</header>
+      <button data-action="money" class="cr-bank" id="cr-bank"></button><div class="cr-reputation" id="cr-reputation"></div>${btn('help','?','cr-icon','aria-label="How to play"')}${btn('exit','Go back to homepage','','id="cr-home"')}</header>
       <div class="cr-guide" id="cr-guide" aria-live="polite"></div>
       <div class="cr-work"><nav class="cr-nav" aria-label="Inventory Manager sections">
         ${[['stock','shelf','Stockroom'],['supply','truck','Suppliers'],['menu','menu','Menu'],['trends','trend','Sales & trends']].map(([id,icon,label])=>btn('tab',`<span>${uiIcon(icon)}</span>${label}`,'',`data-tab="${id}"`)).join('')}
@@ -714,6 +736,8 @@
     else if(!game.introSeen)intro(0);
     else if(!game.briefed)briefing();
     else checkEvents();
+    if(!dialogState&&game.phase==='shift')game.running=game.tutorial.returnHomeRunning===true;
+    lastFrame=0;
   }
   function preparationAction() {
     if(game.tutorial.active)return {kind:'tutorial',label:'Follow tutorial',note:'Follow the highlighted action, or select Skip tutorial.'};
@@ -779,8 +803,8 @@
     }
   }
   function handleClick(e) {
-    const target=e.target.closest('[data-action]');if(!target||!target.isConnected||target.disabled||!game)return;
-    if(game.phase==='planning'&&planningReady&&game.planningTimeLeft()===0){startShift(true);return;}
+    const target=e.target.closest('[data-action]');if(!target||!target.isConnected||target.disabled||!game||leaving)return;
+    if(game.phase==='planning'&&dialogState?.key!=='exit'&&planningReady&&game.planningTimeLeft()===0){startShift(true);return;}
     capturePlanDraft();
     const a=target.dataset.action,d=target.dataset;
     if(a==='replay-tutorial')replayTutorial();
@@ -918,11 +942,35 @@
     else if(a==='money')dialog('money','Debt is not the same as spending power',`<div class="cr-stat-row"><span>Bank balance<b>${money(game.cash)}</b></span><span>Available cash + credit<b>${money(game.spendable)}</b></span>${game.openingOwed?`<span>Opening costs owed<b>${money(game.openingOwed)}</b></span>`:''}</div><p>Starting debt is $500 against a $750 credit limit, leaving $250 to spend; sales repay debt.</p>${game.openingOwed?'<p>Unpaid opening costs reduce available money; income pays them down.</p>':''}<p class="cr-note">Recovery balance: <b>${money(game.balance)}</b> = bank balance + inventory still owned − unpaid opening costs. Improve balance and service to save the café.</p>`,btn('close','Back to work','cr-primary'));
     else if(a==='help')help();
     else if(a==='sound'){game.sound=!game.sound;help();}
-    else if(a==='exit')dialog('exit','Save your spot?',`<p>Resume this saved campaign from the mode menu.</p>${saveError?'<p class="cr-error">Browser storage is unavailable. Progress cannot be saved on this device.</p>':''}`,btn('exit-now','Save & exit','cr-primary')+btn('close','Keep playing'));
-    else if(a==='exit-now'){pausePlanning();save();$('#cr-modal')?.remove();roles();return;}
+    else if(a==='exit'||a==='exit-now'){requestHome();return;}
+    else if(a==='save-home'){saveAndReturnHome();return;}
     else if(a==='restart-confirm')dialog('restart','Start a fresh five-day rescue?',`<p>This replaces your Inventory Manager save in this browser.</p>`,btn('restart','Start new campaign','cr-primary')+btn('close','Keep this campaign'));
     else if(a==='restart'){pausePlanning();planningReady=false;planningBlocker='';unpacking=null;dragged=null;dragOverBin=false;game=new InventorySim();window.inventoryGame=game;tab='stock';cart=[];recipeTargets={};feedbackMessage=null;dialogState=null;render();intro(0);}
     updateHUD();save();
+  }
+  function requestHome() {
+    if(leaving||dialogState?.key==='exit')return;
+    game.tutorial.returnHomeRunning=dialogState?!!dialogState.resume:game.running;
+    pausePlanning();
+    dialog('exit','Return to homepage?','<p id="cr-exit-message">Your progress will be saved so you can continue later.</p>',
+      btn('close','Keep playing')+btn('save-home','Save and return home','cr-primary'));
+    $('#cr-modal section').setAttribute('aria-describedby','cr-exit-message');
+    $('#cr-modal [data-action="close"]').focus();
+  }
+  function saveAndReturnHome() {
+    if(leaving)return;
+    leaving=true;
+    const buttons=[...$('#cr-modal').querySelectorAll('button')];
+    buttons.forEach(b=>b.disabled=true);
+    if(!save()){
+      leaving=false;buttons.forEach(b=>b.disabled=false);
+      error('Progress could not be saved. You are still in the game. Please retry, or keep playing.');
+      const retry=$('#cr-modal [data-action="save-home"]');
+      retry.textContent='Retry save and return home';retry.focus();updateHUD();return;
+    }
+    // Navigate only after the exact snapshot was written and read back successfully.
+    // closeDialog would resume and save again, so leave the paused game directly.
+    roles();leaving=false;
   }
   function handleChange(e) {
     if(e.target.id.startsWith('cr-plan-')){(game.lesson.draft||={})[e.target.id.replace('cr-plan-','')]=e.target.value;save();}
