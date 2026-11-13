@@ -5,12 +5,12 @@ import {ENTRY,lineFree} from '../../dist/floor-manager/layout.mjs';
 import {MAX_SHIFT_SECONDS,SIMULATION_RATE,shiftAdvance} from '../../dist/floor-manager/shift-clock.mjs';
 import {seatingRoute,departureRoute,advanceGuest} from '../../dist/floor-manager/customer-motion.mjs';
 
-const furnished=newDay();furnished.clean=furnished.waste=furnished.floor=furnished.paint=true;
+const furnished=newDay();furnished.objects=furnished.objects.filter(o=>!o.id.startsWith('starter-'));furnished.clean=furnished.waste=furnished.floor=furnished.paint=true;
 furnished.objects.push(...createSet('smallSet','pair',-8,-1),...createSet('roundSet','friends',-2,1),...createSet('soloSet','solo',4,2));
 furnished.objects.push({id:'booth',type:'booth',x:-8,z:4.8,r:0,upgraded:true});
 furnished.objects.push({id:'power',type:'outlet',x:-10.9,z:-1,upgraded:true});
 furnished.lights.push({id:'desk-light',type:'light',x:-8,z:-1,upgraded:true});
-const empty=newDay();
+const empty=newDay();empty.objects=empty.objects.filter(o=>!o.id.startsWith('starter-'));empty.clean=empty.waste=empty.floor=empty.paint=true;
 const blocked=clone(furnished);blocked.objects.push({id:'entrance-block',type:'fixture',x:ENTRY.x,z:ENTRY.z,width:3,depth:2});
 
 // Run the exact fixed-step loop used by game.js, driven by the shared real-time clock.
@@ -30,6 +30,7 @@ assert.equal(shiftAdvance(.5),.5*SIMULATION_RATE,'Slow rendering must not trunca
 const duration=[];
 for(let day=1;day<=4;day++)for(const [layoutName,layout]of Object.entries({empty,furnished,blocked})){
  const s=clone(layout);s.dayNumber=day;
+ console.log('Checking pacing: day '+day+', '+layoutName);
  const normal=playback(s,[1/60]);
  const slow=playback(s,[.25]);
  const interrupted=playback(s,[1/30,.5,1/30,1.8]);
@@ -50,12 +51,14 @@ assert.deepEqual(advanceGuest(origin,null,1),origin);
 const sim=new CafeSimulation(cafeSnapshot(furnished),'day');
 for(const seat of sim.seats){
  const route=seatingRoute(sim,sim.pickup,seat);assert(route?.length,`${seat.id} has a seating route`);
- assert.deepEqual(route.at(-1),{x:seat.x,z:seat.z});
+ // Walking ends beside the chair; game.js then animates the guest sitting down.
+ const approach=sim.seatPath(seat).path.at(-2);
+ assert.deepEqual(route.at(-1),approach);
  let current={...sim.pickup};
- for(const point of route.slice(0,-1)){assert(lineFree(current,point,sim.obs,.18),`${seat.id}: approach avoids obstacles`);current=point;}
+ for(const point of route){assert(lineFree(current,point,sim.obs,.18),`${seat.id}: approach avoids obstacles`);current=point;}
  if(!seat.builtIn){const chair=sim.cafe.objects.find(o=>o.id===seat.id);assert(lineFree(current,seat,sim.obs,.17,chair),`${seat.id}: last step crosses only its own chair`)}
  const walk=route.map(p=>({...p}));let position={...sim.pickup};for(let steps=0;walk.length&&steps<500;steps++)position=advanceGuest(position,walk,.15);
- assert.equal(walk.length,0);assert(Math.hypot(position.x-seat.x,position.z-seat.z)<1e-9);
+ assert.equal(walk.length,0);assert(Math.hypot(position.x-approach.x,position.z-approach.z)<1e-9);
  const departure=departureRoute(sim,seat,seat,ENTRY);assert(departure?.length);assert.deepEqual(departure.at(-1),ENTRY);
  for(let i=1;i<departure.length;i++)assert(lineFree(departure[i-1],departure[i],sim.obs,.18),`${seat.id}: departure avoids furniture after leaving its seat`);
 }
