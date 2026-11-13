@@ -67,7 +67,8 @@ const url=pathToFileURL(path.resolve(__dirname,'../dist/index.html')).href;
     await page.click('[data-action="help"]');await page.click('[data-action="replay-tutorial"]');
     await page.getByRole('button',{name:'Close replay',exact:true}).click();
     assert.equal(await page.evaluate(()=>inventoryGame.tutorial.skipped),true);
-    await page.evaluate(()=>localStorage.removeItem('rise.cafe-rescue.five-day.v1'));
+    // Clear after pagehide autosaves the previous campaign, before the next load.
+    await page.addInitScript(()=>localStorage.removeItem('rise.cafe-rescue.five-day.v1'));
     await page.reload();await page.click('#inventory-start');await page.click('[data-action="intro-done"]');
     await page.click('[data-action="tab"][data-tab="stock"]');
     await page.click('[data-action="inspect"][data-product="Whole Milk"]');
