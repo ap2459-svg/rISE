@@ -124,3 +124,24 @@ body[data-service=on] #storeToggle{top:160px}#livePanel .streak-strip>span:first
 
 .request-tools.chair-quick-actions{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:6px;margin-bottom:10px}
 .request-tools .chair-shortcut{background:#dce9cb;border:2px solid #7e995c;color:#3d5a2b;font-weight:900}
+
+/* Keep paired requests named on the floor while inspecting or arranging. */
+.customer-bubble.problem-bubble{width:158px!important;max-width:158px!important}
+.named-request{width:100%;padding:7px 9px;border:2px solid var(--conflict-color,#a74734);border-radius:10px;background:#fff8e9;color:#3a3022;box-shadow:0 2px 8px #372b2944;cursor:pointer;font:800 14px Nunito}
+.named-request b,.named-request small{display:block}.named-request small{font-size:11px;margin-top:2px;color:var(--conflict-color,#a74734)}
+.conflict-title{font:800 13px Nunito;color:#96503a;margin-top:5px}.select-conflict-guest{display:block;width:100%;text-align:left;padding:7px;border:1px solid #bda77e;border-radius:6px;background:#f2e3c4;color:#4d5738;font:800 14px Nunito;cursor:pointer}.select-conflict-guest[aria-pressed=true]{background:#e2ebce;border-color:#6a834c}
+
+#livePanel{display:none!important}#customerCard{position:fixed!important;left:auto!important;right:12px!important;top:100px!important;width:235px!important;max-height:calc(100vh - 190px)!important;overflow:auto!important;font-size:14px!important}#customerCard:after{display:none!important}#customerCard .customer-speech{font-size:14px!important;line-height:1.35!important}#missionPanel{width:210px!important;max-height:45vh!important;overflow:auto!important}#dailyGoals[hidden]{display:none!important}#missionPanel>details{display:none}#toggleMissions,#tutorialHelp{padding:8px 12px;border:1px solid #9c8358;border-radius:8px;background:#fff8e6;color:#405436;font-weight:bold}#tutorialHelp{position:fixed;bottom:12px;left:12px;z-index:35}#prepClock{position:fixed;top:15px;left:50%;transform:translateX(-50%);z-index:40;padding:10px 18px;background:#fff8e6;border-radius:12px;font-weight:bold}#missionToast{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:100;background:#45663a;color:white;padding:12px 20px;border-radius:10px}#layoutPreview{display:none!important}.tutorial-steps{font-size:18px;line-height:1.6}.checkpoint-options{display:grid;gap:12px}.checkpoint-options button{padding:16px;text-align:left;font-size:17px;background:#fff8e6;border:2px solid #9c8358;border-radius:10px}@media(max-width:700px){#customerCard{width:190px!important;right:5px!important}#missionPanel{width:165px!important}}
+
+#comboHud{position:fixed;top:15px;left:50%;transform:translateX(-50%);z-index:32;background:#fff8e6;color:#45663a;border:1px solid #a7b486;border-radius:18px;padding:8px 14px;font:800 13px Nunito;pointer-events:none}.challenge-results{padding:16px;background:#edf2df;border-radius:12px;margin:16px 0}.challenge-results h2{font-size:21px}.challenge-results small{color:#53624a}@media(max-width:700px){#comboHud{top:65px;font-size:11px;white-space:nowrap}}
+
+.ergonomics-help{font:600 12px/1.45 Nunito;color:#596445;padding:8px;background:#edf2df;border-radius:6px}
+
+#walkthrough{position:fixed;bottom:70px;right:12px;width:280px;max-width:85vw;max-height:55vh;overflow:auto;z-index:60;background:#fff8e6;border:2px solid #71834e;border-radius:12px;padding:14px;box-shadow:0 4px 18px #0002;font:600 14px/1.45 Nunito}#walkthrough h3{margin:5px 0}#walkthrough button{padding:8px;margin-top:8px}.walk-target{outline:4px solid #dca52e!important;outline-offset:4px}#walkthrough[hidden]{display:none}
+
+/* Prominent instructions, with specificity above the compact HUD paragraph rule. */
+#dayHud #shiftBrief,.zone-guidance{box-sizing:border-box;font:800 18px/1.5 Nunito;color:#31452c;background:#f2f5e5;border:2px solid #8da56c;border-left:6px solid #658448;border-radius:10px;padding:13px 15px;margin:12px 0 2px;overflow-wrap:break-word;}
+#dayHud #shiftBrief{width:390px;max-width:100%;}
+#dayHud #shiftBrief::before,.zone-guidance::before{content:"TODAY’S FOCUS";display:block;font:900 12px/1.4 Nunito;letter-spacing:1.2px;color:#526c3e;margin-bottom:5px;}
+.zone-guidance{margin-bottom:16px;}
+@media(max-width:750px){#dayHud #shiftBrief{font-size:16px;line-height:1.4;padding:10px 11px;}#dayHud:has(#shiftBrief:not([hidden])){max-height:45dvh;overflow-y:auto;}.zone-guidance{font-size:17px;}}

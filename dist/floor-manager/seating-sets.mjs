@@ -1,4 +1,4 @@
-import {size,local,placement} from './layout.mjs?v=chair-shortcut-31';
+import {size,local,placement} from './layout.mjs?v=crowds-40';
 export const SETS={
  longSet:{name:'Communal table · 4 seats',type:'longTable',price:330,offsets:[[-.75,-1,Math.PI],[.75,-1,Math.PI],[-.75,1,0],[.75,1,0]]},
  soloSet:{name:'Solo study desk · 1 seat',type:'smallTable',price:95,offsets:[[0,.9,0]]},
