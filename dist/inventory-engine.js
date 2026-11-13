@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const CONFIG = Object.freeze({
-    version:6, days:5, shiftSeconds:75, openingCash:-500, creditLimit:750,
+    version:6, days:5, shiftSeconds:75, planningSeconds:90, openingCash:-500, creditLimit:750,
     openingReputation:20, dailyOverhead:14, overnightSeconds:75,
     patience:12, bakeSeconds:8, bakeBatch:4, bakeConversion:3.4,
     arrivalIntervals:[2.8,2.3,2,1.8,1.3], serviceSeconds:2, seed:19725
@@ -68,6 +68,8 @@
   });
   class InventorySim {
     constructor(seed=Date.now()) {
+      // Runtime deadlines are monotonic and never serialized across page loads.
+      Object.defineProperty(this,'_planningDeadline',{value:null,writable:true});
       this.seed=(Number(seed)>>>0)||CONFIG.seed;
       this.day=1; this.clock=0; this.cash=CONFIG.openingCash; this.creditLimit=CONFIG.creditLimit;
       this.reputation=CONFIG.openingReputation; this.lots=Object.fromEntries(ITEMS.map(i=>[i.name,[]]));
@@ -186,6 +188,7 @@
       this.rewards[key]=true; this.badges.push(title); this.xp+=points; return true;
     }
     beginDay() {
+      this._planningDeadline=null; this.planningRemaining=CONFIG.planningSeconds;
       this.phase='planning'; this.running=false; this.elapsed=0; this.pendingEvent=null; this.eventSeen=false;
       this.briefed=false; this.orders=[]; this.helper=false; this.discount=false; this.promotion=null;
       this.ovenBroken=false; this.slowOven=false; this.safetyAlert=false; this.metrics=newMetrics();
@@ -733,6 +736,17 @@
       if(correct) this.earn(`reflection-${this.day}`,'Engineer’s reflection',10);
       return correct;
     }
+    /* Real preparation time is independent of simulation speed and logistics jumps.
+       Dialogs, hidden tabs and leaving the mode intentionally pause both clocks. */
+    planningTimeLeft(now=performance.now()) {
+      return this.phase==='planning'?Math.max(0,this._planningDeadline===null?this.planningRemaining:(this._planningDeadline-now)/1000):0;
+    }
+    resumePlanningClock(now=performance.now()) {
+      if(this.phase==='planning'&&this._planningDeadline===null)this._planningDeadline=now+this.planningRemaining*1000;
+    }
+    pausePlanningClock(now=performance.now()) {
+      this.planningRemaining=this.planningTimeLeft(now); this._planningDeadline=null;
+    }
     /* Campaign clock: planning advances logistics only; the live shift advances everything. */
     open() {
       if(this.phase!=='planning') return 'This day has already started.';
@@ -743,7 +757,8 @@
       if(!MENU.some(p=>p.kind==='drink'&&this.menu[p.id].enabled&&this.servings(p.id)>0)) return 'Stock at least one complete drink recipe before opening.';
       const overhead=CONFIG.dailyOverhead-(this.upgrades.includes('energy')?5:0);
       if(!this.spendOperating(overhead)) return `Keep $${overhead} available for today’s rent, power and staff.`;
-      this.phase='shift'; this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
+      this.phase='shift'; this.planningRemaining=0; this._planningDeadline=null;
+      this.running=true; this.tutorial.finished=true; this.tutorial.active=false; return null;
     }
     tickPlanning(seconds) {
       if(this.phase!=='planning'||!Number.isFinite(seconds)||seconds<=0)return;
@@ -831,8 +846,9 @@
         turnover:sum(this.reports.map(r=>r.cogs))/Math.max(1,sum(this.reports.map(r=>r.averageInventory))/CONFIG.days)};
     }
     /* Versioned, mode-specific saves. Resume always pauses to orient the player. */
-    save() {
-      const data=clone(this); data.running=false; return JSON.stringify({version:CONFIG.version,state:data});
+    save(now=performance.now()) {
+      const data=clone(this); data.planningRemaining=this.planningTimeLeft(now);
+      data.running=false; return JSON.stringify({version:CONFIG.version,state:data});
     }
     static restore(serialized) {
       try {
@@ -863,6 +879,9 @@
         if(ITEMS.some(i=>!Array.isArray(s.lots[i.name])||s.lots[i.name].some(l=>!Number.isInteger(l.qty)||l.qty<0||l.cost<0||typeof l.expires!=='number'))) return null;
         if(MENU.some(p=>!s.menu[p.id]||typeof s.menu[p.id].enabled!=='boolean'||!Number.isFinite(s.menu[p.id].price)||s.menu[p.id].price<p.price*.5||s.menu[p.id].price>p.price*1.8)) return null;
         if(s.deliveries.some(d=>!Array.isArray(d.lines)||d.lines.some(l=>!BY_NAME[l.name]||!Number.isInteger(l.qty)||l.qty<0))) return null;
+        // Existing version-6 campaigns gain a timer without losing their progress.
+        if(!Object.hasOwn(s,'planningRemaining'))s.planningRemaining=s.phase==='planning'?CONFIG.planningSeconds:0;
+        if(!Number.isFinite(s.planningRemaining)||s.planningRemaining<0||s.planningRemaining>CONFIG.planningSeconds)return null;
         const game=new InventorySim(s.seed);
         if(Object.keys(game).some(key=>!Object.hasOwn(s,key))) return null;
         for(const key of Object.keys(game)) if(Object.hasOwn(s,key)) game[key]=s[key];

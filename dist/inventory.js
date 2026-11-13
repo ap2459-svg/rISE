@@ -13,6 +13,25 @@
   let menuPage=0,menuSection='drinks',speed=1,dialogState=null,lastFrame=0,lastPaint=0,lastSave=0,lastXP=0,saveError=false,audio;
   let inspected=null,upgradePage=0,dragged=null,unpacking=null,recipeTargets={},recipeItem='latte',feedbackMessage=null;
   let cartComparison=null;
+  let planningTimeout=null,planningReady=false,planningBlocker='';
+
+  function pausePlanning() {
+    clearTimeout(planningTimeout);planningTimeout=null;
+    game?.pausePlanningClock();
+  }
+  function syncPlanning() {
+    if(!game||game.phase!=='planning'||!planningReady||!game.briefed||dialogState||document.hidden){pausePlanning();return;}
+    game.resumePlanningClock();
+    const remaining=game.planningTimeLeft();
+    if(remaining===0){startShift(true);return;}
+    if(planningTimeout===null){
+      const campaign=game,day=game.day;
+      planningTimeout=setTimeout(()=>{
+        planningTimeout=null;
+        if(game===campaign&&game.day===day&&game.phase==='planning')updateHUD();
+      },Math.ceil(remaining*1000));
+    }
+  }
 
   function uiIcon(key) {
     const shapes={
@@ -98,6 +117,7 @@
     sound(success);
   }
   function dialog(key,title,body,footer) {
+    pausePlanning();
     const resume=dialogState?dialogState.resume:game?.running;
     dialogState={key,resume,focus:document.activeElement?.id};
     if(game)game.running=false;
@@ -124,12 +144,14 @@
   }
   function closeDialog(resume=true) {
     const prior=dialogState;dialogState=null;$('#cr-modal')?.remove();$('.cr-game')?.removeAttribute('inert');
+    planningReady=true;
     if(game&&resume&&prior?.resume&&game.phase==='shift'&&!game.pendingEvent)game.running=true;
     ($('#'+(prior?.focus||'cr-play'))||$('#cr-play'))?.focus();
     drawTab();updateHUD();save();
   }
   function error(message) { const node=$('#cr-dialog-error');if(node)node.textContent=message;else toast(message,false); }
   function start() {
+    pausePlanning();planningReady=false;planningBlocker='';
     sim=null;paused=false;modalKind=null;document.body.classList.remove('playing');
     document.querySelectorAll('.modal-backdrop,.station-overlay').forEach(n=>n.remove());
     const previous=savedGame();
@@ -145,6 +167,7 @@
   // Preserve the other role cards, routes and original event handlers.
   const originalRoles=roles;
   roles=function() {
+    pausePlanning();planningReady=false;planningBlocker='';
     if(game)save(); game=null;window.inventoryGame=null;dialogState=null;
     document.body.classList.remove('inventory-playing');originalRoles();
     const card=[...document.querySelectorAll('.role-choice')].find(n=>n.querySelector('h2')?.textContent==='Inventory Manager');
@@ -212,6 +235,10 @@
         <div class="cr-nav-bottom"><div class="cr-team">${uiIcon("shop")}<b>Your five-day comeback</b></div>${btn('operations-plan','Required operations plan')}${btn('brief','Today’s mission')}${btn('upgrades',' Improve café')}<small id="cr-xp"></small></div>
       </nav><section class="cr-workspace" id="cr-workspace" aria-label="Game workspace"></section></div>
       <section class="cr-live"><div id="cr-feedback"></div><button data-action="deliveries" id="cr-dock"></button><div id="cr-live-stats"></div></section>
+      <section class="cr-planning" id="cr-planning" aria-label="Preparation countdown">
+        <div class="cr-planning-clock"><span id="cr-planning-label">Planning time remaining</span><b id="cr-planning-time" role="timer" aria-labelledby="cr-planning-label">1:30</b><span id="cr-planning-paused"></span></div>
+        <p id="cr-planning-note" role="status"></p>
+      </section>
       <footer class="cr-controls"><div><b id="cr-phase"></b><small id="cr-save"></small></div><div class="cr-clock"><span id="cr-clock"></span><progress id="cr-progress" max="${CONFIG.shiftSeconds}" value="0"></progress></div>
       <div class="cr-speeds" role="group" aria-label="Simulation speed">${[1,2,3].map(s=>btn('speed',`${s}×`,'',`data-speed="${s}" aria-label="${s} times speed"`)).join('')}</div>${btn('play','Open café','cr-primary','id="cr-play"')}</footer>
       </main>`;
@@ -595,15 +622,23 @@
     else if(!game.briefed)briefing();
     else checkEvents();
   }
-  function startShift() {
+  function startShift(automatic=false) {
+    // An expired callback must never toggle an already-open shift's Pause control.
+    if(!game||automatic&&(game.phase!=='planning'||dialogState||document.hidden||!planningReady))return;
     if(game.phase==='complete'){ending();return;}
     if(game.phase==='review'){report();return;}
     if(game.phase==='planning') {
-      if(game.tutorial.active){toast('Finish the highlighted tutorial steps, or choose Skip tutorial.',false);return;}
-      if(!game.lesson.plan){operationsPlan();return;}
-      const message=game.open();if(message){dialog('opening-check','Before you open',`<p>${esc(message)}</p>`,btn('fix-opening','Show me where','cr-primary')+btn('close','Back to preparation'));return;}
+      if(automatic){
+        planningBlocker=game.tutorial.active?'Finish the highlighted steps or select Skip tutorial.':game.open()||'';
+        if(planningBlocker)return;
+      }else{
+        if(game.tutorial.active){toast('Finish the highlighted tutorial steps, or choose Skip tutorial.',false);return;}
+        if(!game.lesson.plan){operationsPlan();return;}
+        const message=game.open();if(message){dialog('opening-check','Before you open',`<p>${esc(message)}</p>`,btn('fix-opening','Show me where','cr-primary')+btn('close','Back to preparation'));return;}
+      }
+      pausePlanning();planningReady=false;planningBlocker='';
       closeDialog(false);game.running=true;toast('Café open; keep recipes stocked.');drawTab();
-    } else {game.running=!game.running;}
+    }
     save();updateHUD();
   }
   function checkEvents() {
@@ -722,6 +757,7 @@
     else if(a==='helper'){toast(game.hireHelper()?'Helper hired today: prepare two orders at once.':'Helper unavailable or not enough credit.',game.helper);drawTab();}
     else if(a==='reorder-cart'){tab='supply';addToCart(game.reorderPlan(supplier),true);}
     else if(a==='play')startShift();
+    else if(a==='toggle-shift'){if(game.phase==='shift')game.running=!game.running;}
     else if(a==='operations-plan'){if(game.phase==='planning')operationsPlan();else toast('Planning is complete for this shift. Review the outcomes after closing.');}
     else if(a==='fix-opening'){
       closeDialog(false);
@@ -761,9 +797,9 @@
     else if(a==='help')help();
     else if(a==='sound'){game.sound=!game.sound;help();}
     else if(a==='exit')dialog('exit','Save your spot?',`<p>Resume this saved campaign from the mode menu.</p>${saveError?'<p class="cr-error">Browser storage is unavailable. Progress cannot be saved on this device.</p>':''}`,btn('exit-now','Save & exit','cr-primary')+btn('close','Keep playing'));
-    else if(a==='exit-now'){save();closeDialog(false);roles();return;}
+    else if(a==='exit-now'){pausePlanning();save();$('#cr-modal')?.remove();roles();return;}
     else if(a==='restart-confirm')dialog('restart','Start a fresh five-day rescue?',`<p>This replaces your Inventory Manager save in this browser.</p>`,btn('restart','Start new campaign','cr-primary')+btn('close','Keep this campaign'));
-    else if(a==='restart'){game=new InventorySim();window.inventoryGame=game;tab='stock';category='rescue';cart=[];recipeTargets={};feedbackMessage=null;dialogState=null;render();intro(0);}
+    else if(a==='restart'){pausePlanning();planningReady=false;planningBlocker='';game=new InventorySim();window.inventoryGame=game;tab='stock';category='rescue';cart=[];recipeTargets={};feedbackMessage=null;dialogState=null;render();intro(0);}
     updateHUD();save();
   }
   function handleChange(e) {
@@ -783,14 +819,25 @@
   }
   function updateHUD() {
     if(!game||!$('.cr-game'))return;
+    syncPlanning();
     patch('#cr-bank',`<small>Bank balance</small><b>${money(game.cash)}</b>`);
     patch('#cr-reputation',`<small>Customer Rating</small>${rating()}`);
     document.querySelectorAll('[data-day]').forEach(n=>{n.classList.toggle('done',Number(n.dataset.day)<game.day);n.classList.toggle('current',Number(n.dataset.day)===game.day);});
     $('#cr-phase').textContent=`Day ${game.day} · ${game.phase==='planning'?'Prepare the café':game.phase==='shift'?(game.running?'Café open':'Paused'):game.phase==='review'?'Review & improve':'Campaign complete'}`;
     $('#cr-clock').textContent=time(CONFIG.shiftSeconds-game.elapsed);$('#cr-progress').value=game.elapsed;
-    $('#cr-save').textContent=saveError?'Save unavailable in this browser':game.phase==='planning'?'Planning time is yours · auto-save on':'All systems share the same clock · auto-save on';
-    $('#cr-play').disabled=game.tutorial.active&&game.day===1;
-    $('#cr-play').textContent=game.phase==='planning'?'Open café →':game.phase==='review'?'Day results →':game.phase==='complete'?'Your ending →':game.running?'Ⅱ Pause':'Resume';
+    const planning=game.phase==='planning',remaining=game.planningTimeLeft();
+    $('#cr-planning').hidden=!planning;$('.cr-clock').hidden=planning;
+    $('#cr-planning-time').textContent=time(remaining);
+    $('#cr-planning-paused').textContent=planning&&remaining>0&&(dialogState||document.hidden||!planningReady)?'Paused':'';
+    $('#cr-planning').classList.toggle('cr-planning-expired',planning&&remaining===0);
+    const note=remaining===0?`Time is up. ${planningBlocker||'Complete the opening requirements.'} The café opens automatically when ready.`:'You have 90 seconds to prepare. The café opens when time runs out if opening requirements are met.';
+    if($('#cr-planning-note').textContent!==note)$('#cr-planning-note').textContent=note;
+    $('#cr-save').textContent=saveError?'Save unavailable in this browser':planning?'Dialogs and hidden tabs pause the clock · auto-save on':'All systems share the same clock · auto-save on';
+    // Replace the button when its action changes so a queued Open click cannot pause the shift.
+    let play=$('#cr-play');const action=game.phase==='shift'?'toggle-shift':'play';
+    if(play.dataset.action!==action){const focused=document.activeElement===play,next=play.cloneNode(true);next.dataset.action=action;play.replaceWith(next);play=next;if(focused)play.focus({preventScroll:true});}
+    play.disabled=game.tutorial.active&&game.day===1;
+    play.textContent=planning?'Open café →':game.phase==='review'?'Day results →':game.phase==='complete'?'Your ending →':game.running?'Ⅱ Pause':'Resume';
     document.querySelectorAll('[data-speed]').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.speed)===speed));
     $('#cr-xp').textContent=` ${game.xp} IE XP · ${game.badges.length} milestones`;
     const pending=game.deliveries.filter(d=>!d.shelved&&!d.cancelled),ready=pending.filter(d=>d.arrived).length,late=pending.some(d=>d.delayNotified&&!d.arrived);
@@ -817,7 +864,8 @@
     if(game&&now-lastSave>5000){save();lastSave=now;}
     requestAnimationFrame(loop);
   });
-  document.addEventListener('visibilitychange',()=>{if(game&&document.hidden){game.running=false;save();}});
-  window.addEventListener('pagehide',save);
+  document.addEventListener('visibilitychange',()=>{if(game){if(document.hidden){game.running=false;pausePlanning();save();}else updateHUD();}});
+  window.addEventListener('pagehide',()=>{planningReady=false;pausePlanning();save();});
+  window.addEventListener('pageshow',e=>{if(e.persisted&&game){planningReady=true;updateHUD();}});
   roles();
 })();
