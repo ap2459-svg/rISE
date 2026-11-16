@@ -1,0 +1,46 @@
+name: Inventory live-base validation
+on:
+  push:
+    branches: [feat/inventory-iteration-2-live-base]
+permissions:
+  contents: read
+  pages: read
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify live hosting and deployed inventory assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/ap2459-svg/rISE/pages --jq '{source,cname,build_type}'
+          python3 - <<'PY'
+          import urllib.request, hashlib, pathlib, json
+          results={}
+          for name in ['index.html','inventory.js','inventory-engine.js','inventory.css']:
+              data=urllib.request.urlopen('https://riseise.com/dist/'+name+'?baseline=442e348').read()
+              expected=pathlib.Path('dist', name).read_bytes()
+              assert data == expected, 'Live file differs: '+name
+              results[name]=hashlib.sha256(data).hexdigest()
+          pathlib.Path('live-baseline-verification.json').write_text(json.dumps(results,indent=2))
+          print('Live /dist/ entry and Inventory assets match deployed baseline exactly')
+          PY
+      - name: Existing Inventory Manager regressions
+        run: node tests/inventory.test.cjs
+      - name: Export baseline for scoped code review
+        if: always()
+        run: |
+          mkdir -p /tmp/rise-live-baseline
+          git archive HEAD dist tests docs index.html CNAME | tar -x -C /tmp/rise-live-baseline
+          cp live-baseline-verification.json /tmp/rise-live-baseline/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rise-live-baseline
+          path: /tmp/rise-live-baseline
+          include-hidden-files: true
+          retention-days: 1
