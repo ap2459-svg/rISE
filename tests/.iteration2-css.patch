@@ -1,8 +1,8 @@
 diff --git a/dist/inventory.css b/dist/inventory.css
-index 90b0c99..761bd45 100644
+index 90b0c99..1b5f9c9 100644
 --- a/dist/inventory.css
 +++ b/dist/inventory.css
-@@ -748,0 +749,22 @@
+@@ -748,0 +749,26 @@
 +
 +/* Iteration 2: scoped guidance and clearer controls; retain the deployed stockroom. */
 +.cr-game .cr-nav>button .cr-nav-label{display:block;width:auto;text-align:left;font-size:inherit;line-height:1.2}
@@ -25,3 +25,7 @@ index 90b0c99..761bd45 100644
 +.cr-game .cr-tour-target,.cr-overlay .cr-tour-target{animation:none!important}
 +.cr-game .cr-tour-target:after,.cr-overlay .cr-tour-target:after{display:none}
 +@media(max-width:800px){.cr-game .cr-nav-label small{display:none}.cr-game .cr-nav>button .cr-nav-label{text-align:center}.cr-game .cr-trend-summary>button{padding:6px 3px;font-size:9px}.cr-game .cr-profit-help{font-size:11px}}
++@media(max-width:520px) and (min-height:741px){
++  .cr-game .cr-order-layout{grid-template-rows:minmax(0,1fr) auto}
++  .cr-game .cr-cart{grid-template-rows:auto minmax(min-content,1fr);min-height:min-content}
++}
