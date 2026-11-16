@@ -2,55 +2,26 @@ name: Inventory iteration 2 validation
 on:
   push:
     branches: [feat/inventory-manager-iteration-2]
+  pull_request:
+    branches: [Final-rISE]
+    paths:
+      - 'dist/inventory*'
+      - 'tests/inventory*'
+      - 'tests/save-home.cjs'
+      - '.github/workflows/inventory-iteration2-validation.yml'
 permissions:
   contents: read
 jobs:
   inventory:
-    if: contains(github.event.head_commit.message, '[inventory-validate]')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply only the reviewed Inventory Manager patch
-        run: |
-          python3 - <<'PY'
-          import base64, gzip, hashlib, pathlib, re
-          encoded = ''.join(pathlib.Path(f'tests/inventory-iteration2.patch.{n}.b64').read_text().strip() for n in (1, 2))
-          patch = gzip.decompress(base64.b64decode(encoded))
-          assert hashlib.sha256(patch).hexdigest() == 'a9d1e0f369e420b5f8cea22d5aaf643ad8dd0700d11806d693fb99f235bd1355', 'Patch integrity check failed'
-          allowed = {'dist/inventory-engine.js', 'dist/inventory.js', 'dist/inventory.css', 'tests/inventory-iteration2.test.cjs', 'tests/inventory-iteration2-browser.cjs'}
-          files = re.findall(r'^diff --git a/(\S+) b/(\S+)$', patch.decode(), re.M)
-          assert files and all(a == b and a in allowed for a, b in files), 'Unexpected patch path'
-          assert {a for a, b in files} == allowed, 'Incomplete patch'
-          pathlib.Path('/tmp/inventory-iteration2.patch').write_bytes(patch)
-          PY
-          git apply --unidiff-zero --check /tmp/inventory-iteration2.patch
-          git apply --unidiff-zero /tmp/inventory-iteration2.patch
-          python3 - <<'PY'
-          import pathlib
-          p = pathlib.Path('dist/inventory.css')
-          s = p.read_text()
-          needle = '.cr-event-summary{flex-shrink:0}\n'
-          assert s.count(needle) == 1
-          p.write_text(s.replace(needle, needle + '.cr-game .cr-trend-layout{flex:1 0 auto;min-height:min-content}\n'))
-          p = pathlib.Path('tests/inventory-iteration2-browser.cjs')
-          s = p.read_text()
-          needle = "      await shot('trends');\n"
-          assert s.count(needle) == 1
-          addition = """      assert(await page.locator('.cr-trend-layout').evaluate(el=>{
-                  const box=el.getBoundingClientRect();return [...el.querySelectorAll('p,button,.cr-compare')].every(n=>n.getBoundingClientRect().bottom<=box.bottom+1);
-                }),'all trend details fit their cards; the existing workspace scrolls instead of overlapping');
-                await page.locator('.cr-chart-card [data-action="performance"]').click();await click('close');
-          """
-          addition = addition.replace('\n        ', '\n')
-          p.write_text(s.replace(needle, addition + needle))
-          PY
-          rm tests/inventory-iteration2.patch.1.b64 tests/inventory-iteration2.patch.2.b64
       - name: Syntax checks
         run: |
           node --check dist/inventory-engine.js
@@ -79,14 +50,6 @@ jobs:
           PLAYWRIGHT_PATH: /tmp/rise-browser/node_modules/playwright
           SCREENSHOT_DIR: /tmp/rise-shots
         run: node tests/inventory-iteration2-browser.cjs
-      - name: Commit the tested changes to the feature branch only
-        run: |
-          test "$GITHUB_REF" = 'refs/heads/feat/inventory-manager-iteration-2'
-          git add dist/inventory-engine.js dist/inventory.js dist/inventory.css tests/inventory-iteration2.test.cjs tests/inventory-iteration2-browser.cjs tests/inventory-iteration2.patch.1.b64 tests/inventory-iteration2.patch.2.b64
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Improve Inventory Manager guidance, rotation, explanations and delivery alerts'
-          git push origin HEAD:refs/heads/feat/inventory-manager-iteration-2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
