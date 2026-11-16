@@ -4,43 +4,77 @@ on:
     branches: [feat/inventory-iteration-2-live-base]
 permissions:
   contents: read
-  pages: read
 jobs:
-  baseline:
+  validate:
+    if: contains(github.event.head_commit.message, '[inventory-apply]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          persist-credentials: false
-      - name: Verify live hosting and deployed inventory assets
-        env:
-          GH_TOKEN: ${{ github.token }}
+          node-version: '22'
+      - name: Baseline campaign results
+        run: node tests/inventory.test.cjs > /tmp/baseline-campaigns.txt
+      - name: Apply only Inventory Manager changes
         run: |
-          gh api repos/ap2459-svg/rISE/pages --jq '{source,cname,build_type}'
+          test "$GITHUB_REF" = refs/heads/feat/inventory-iteration-2-live-base
+          cat tests/.iteration2-engine.patch tests/.iteration2-css.patch tests/.iteration2-ui.patch > /tmp/inventory.patch
           python3 - <<'PY'
-          import urllib.request, hashlib, pathlib, json
-          results={}
-          for name in ['index.html','inventory.js','inventory-engine.js','inventory.css']:
-              data=urllib.request.urlopen('https://riseise.com/dist/'+name+'?baseline=442e348').read()
-              expected=pathlib.Path('dist', name).read_bytes()
-              assert data == expected, 'Live file differs: '+name
-              results[name]=hashlib.sha256(data).hexdigest()
-          pathlib.Path('live-baseline-verification.json').write_text(json.dumps(results,indent=2))
-          print('Live /dist/ entry and Inventory assets match deployed baseline exactly')
+          import pathlib, re
+          text=pathlib.Path('/tmp/inventory.patch').read_text()
+          files=re.findall(r'^diff --git a/(\S+) b/(\S+)$',text,re.M)
+          allowed={'dist/inventory-engine.js','dist/inventory.css','dist/inventory.js'}
+          assert {a for a,b in files} == allowed and all(a==b for a,b in files)
           PY
-      - name: Existing Inventory Manager regressions
-        run: node tests/inventory.test.cjs
-      - name: Export baseline for scoped code review
-        if: always()
+          git apply --unidiff-zero --check /tmp/inventory.patch
+          git apply --unidiff-zero /tmp/inventory.patch
+      - name: Syntax, existing engine checks and baseline parity
         run: |
-          mkdir -p /tmp/rise-live-baseline
-          git archive HEAD dist tests docs index.html CNAME | tar -x -C /tmp/rise-live-baseline
-          cp live-baseline-verification.json /tmp/rise-live-baseline/ 2>/dev/null || true
+          node --check dist/inventory.js
+          node --check dist/inventory-engine.js
+          node tests/inventory.test.cjs | tee /tmp/updated-campaigns.txt
+          diff -u /tmp/baseline-campaigns.txt /tmp/updated-campaigns.txt
+          node tests/inventory-planning.test.cjs
+          node tests/inventory-setup.test.cjs
+          node tests/inventory-live-iteration2.test.cjs
+      - name: Unchanged Floor Manager checks
+        run: for file in tests/floor-manager/*checks.mjs; do node "$file"; done
+      - name: Install isolated browser testing tools
+        run: |
+          npm install --prefix /tmp/rise-browser --no-save --package-lock=false playwright@1.57.0
+          google-chrome --version
+          mkdir -p /tmp/rise-live-shots
+      - name: Existing desktop and mobile browser suites
+        env:
+          PLAYWRIGHT_MODULE: /tmp/rise-browser/node_modules/playwright
+          PLAYWRIGHT_PATH: /tmp/rise-browser/node_modules/playwright
+          CHROME_PATH: /usr/bin/google-chrome
+          SCREENSHOTS: /tmp/rise-live-shots
+        run: |
+          for file in tests/inventory-planning.browser.cjs tests/inventory-setup.browser.cjs tests/inventory-shelves.browser.cjs tests/inventory-presentation.browser.cjs tests/inventory-tutorial.browser.cjs; do
+            node "$file"
+          done
+          node tests/save-home.cjs
+      - name: Iteration 2 tutorial, two-round and interaction regressions
+        env:
+          PLAYWRIGHT_MODULE: /tmp/rise-browser/node_modules/playwright
+          CHROME_PATH: /usr/bin/google-chrome
+          SCREENSHOTS: /tmp/rise-live-shots
+        run: node tests/inventory-live-iteration2.browser.cjs
+      - name: Commit tested Inventory changes only to the new branch
+        run: |
+          rm tests/.iteration2-engine.patch tests/.iteration2-css.patch tests/.iteration2-ui.patch
+          git add dist/inventory-engine.js dist/inventory.js dist/inventory.css tests/.iteration2-engine.patch tests/.iteration2-css.patch tests/.iteration2-ui.patch
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Improve Inventory Manager on the verified deployed baseline'
+          git push origin HEAD:refs/heads/feat/inventory-iteration-2-live-base
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: rise-live-baseline
-          path: /tmp/rise-live-baseline
-          include-hidden-files: true
-          retention-days: 1
+          name: live-base-browser-review
+          path: /tmp/rise-live-shots
+          retention-days: 7
