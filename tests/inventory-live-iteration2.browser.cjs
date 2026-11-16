@@ -104,7 +104,7 @@ const key='rise.cafe-rescue.five-day.v1';
   await page.click('[data-action="close"]');
   await page.evaluate(()=>{
    const g=inventoryGame;g.placeOrder([{name:'Cup',qty:2,supplier:'quick',frozen:false,express:false}]);g.deliveries.at(-1).error=false;g.deliveries.at(-1).delayed=false;g.deliveries.at(-1).eta=g.clock;g.processDeliveries();
-  });await page.clock.fastForward(1200);
+  });await page.clock.runFor(1200);
   assert.equal(await page.locator('#cr-dock').getAttribute('data-delivery-state'),'new-stock');assert.match(await page.locator('#cr-dock').innerText(),/2 units on shelves/);
   const announced=await page.locator('#cr-delivery-announcement').getAttribute('data-deliveries');
   await page.clock.fastForward(1200);assert.equal(await page.locator('#cr-delivery-announcement').getAttribute('data-deliveries'),announced);
