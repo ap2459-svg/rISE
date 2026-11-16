@@ -19,8 +19,3 @@ body.playing{height:100dvh;overflow:hidden}.playing #app{height:100%}.queue-game
 .with-ticket .fill-feedback{bottom:72px}
 @media(max-width:900px){.fill-workspace>#nozzle{right:5px;width:86px}}
 @media(max-width:400px){.fill-workspace>#nozzle{width:72px;padding:5px;font-size:11px}}
-
-/* Clear oven timing and existing shift progression controls. */
-.oven-slot strong{font-size:clamp(18px,2vw,26px);font-variant-numeric:tabular-nums;background:#fff6dd;color:#3e281b;border-radius:8px;padding:5px 8px}
-.shift-report .report-actions,.power-footer{position:sticky;bottom:0;z-index:5;background:#fff2d8;padding:14px;border-radius:14px}
-#go-shop:not(:disabled),#begin-next{outline:3px solid #ecc456;outline-offset:3px;box-shadow:0 0 0 6px #ecc45633}
