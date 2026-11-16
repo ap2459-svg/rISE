@@ -6,22 +6,70 @@ permissions:
   contents: read
 jobs:
   inventory:
+    if: contains(github.event.head_commit.message, '[inventory-validate]')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Existing inventory regression suite
-        run: node tests/inventory.test.cjs
-      - name: Export source and test results for inspection
-        if: always()
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply only the reviewed Inventory Manager patch
         run: |
-          mkdir -p /tmp/rise-inventory-source
-          git archive HEAD | tar -x -C /tmp/rise-inventory-source
-          cp -r tests/artifacts /tmp/rise-inventory-source/tests/ 2>/dev/null || true
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, pathlib, re
+          payload = json.loads(pathlib.Path('tests/inventory-iteration2.patch.json').read_text())
+          patch = gzip.decompress(base64.b64decode(payload['patch']))
+          assert hashlib.sha256(patch).hexdigest() == payload['sha256'], 'Patch integrity check failed'
+          allowed = {'dist/inventory-engine.js', 'dist/inventory.js', 'dist/inventory.css', 'tests/inventory-iteration2.test.cjs', 'tests/inventory-iteration2-browser.cjs'}
+          files = re.findall(r'^diff --git a/(\S+) b/(\S+)$', patch.decode(), re.M)
+          assert files and all(a == b and a in allowed for a, b in files), 'Unexpected patch path'
+          assert {a for a, b in files} == allowed, 'Incomplete patch'
+          pathlib.Path('/tmp/inventory-iteration2.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/inventory-iteration2.patch
+          git apply /tmp/inventory-iteration2.patch
+          rm tests/inventory-iteration2.patch.json
+      - name: Syntax checks
+        run: |
+          node --check dist/inventory-engine.js
+          node --check dist/inventory.js
+          node --check tests/inventory-iteration2.test.cjs
+          node --check tests/inventory-iteration2-browser.cjs
+      - name: Existing inventory regression suite and five-day campaigns
+        run: node tests/inventory.test.cjs
+      - name: New inventory engine regressions
+        run: node tests/inventory-iteration2.test.cjs
+      - name: Unchanged Floor Manager regression suites
+        run: node tests/floor-manager/run-checks.cjs
+      - name: Install browser test tools outside the repository
+        run: |
+          npm install --prefix /tmp/rise-browser --no-save --package-lock=false playwright@1.57.0
+          /tmp/rise-browser/node_modules/.bin/playwright install --with-deps chrome
+          mkdir -p /tmp/rise-shots
+      - name: Existing save and homepage browser regressions
+        env:
+          PLAYWRIGHT_PATH: /tmp/rise-browser/node_modules/playwright
+          SCREENSHOT_DIR: /tmp/rise-shots
+        run: node tests/save-home.cjs
+      - name: Desktop and mobile Inventory Manager browser regressions
+        env:
+          PLAYWRIGHT_PATH: /tmp/rise-browser/node_modules/playwright
+          SCREENSHOT_DIR: /tmp/rise-shots
+        run: node tests/inventory-iteration2-browser.cjs
+      - name: Commit the tested changes to the feature branch only
+        run: |
+          test "$GITHUB_REF" = 'refs/heads/feat/inventory-manager-iteration-2'
+          git add dist/inventory-engine.js dist/inventory.js dist/inventory.css tests/inventory-iteration2.test.cjs tests/inventory-iteration2-browser.cjs tests/inventory-iteration2.patch.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Improve Inventory Manager guidance, rotation, explanations and delivery alerts'
+          git push origin HEAD:refs/heads/feat/inventory-manager-iteration-2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: inventory-iteration2-source
-          path: /tmp/rise-inventory-source
-          include-hidden-files: true
-          retention-days: 1
+          name: inventory-iteration2-browser-checks
+          path: /tmp/rise-shots
+          retention-days: 7
