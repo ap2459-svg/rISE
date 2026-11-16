@@ -74,7 +74,7 @@ const url=process.env.INVENTORY_PREVIEW_URL||pathToFileURL(path.resolve(__dirnam
    // Renders retain keyboard focus even when the focused product count changes.
    await cup.focus();await page.evaluate(()=>inventoryGame.addLot('Cup',1,.18,100000000));await page.clock.fastForward(600);
    assert.equal(await page.evaluate(()=>document.activeElement.dataset.product),'Cup');
-   await page.click('[data-action="exit"]');await page.click('[data-action="exit-now"]');
+   await page.click('[data-action="exit"]');await page.click('[data-action="save-home"]');
    await page.click('#inventory-start');await page.click('[data-action="resume-save"]');
    assert.equal(await page.locator('.cr-stock-item').count(),27);
    assert.match(await page.locator('.cr-stock-item[data-product="Cup"]').innerText(),/10 ready/);
