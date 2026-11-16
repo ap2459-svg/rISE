@@ -16,9 +16,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
-      PREVIEW_SHA: 616b7cfec94ef92daa230332c7a383fe9cfa184d
+      PREVIEW_SHA: 42b11a89f1f1fb0690f3ebd43013fe7d5f5791fc
     steps:
-      - name: Verify the existing publishing target
+      - name: Verify existing publishing configuration
         run: |
           gh api "repos/$REPO/pages" > /tmp/pages.json
           python3 - <<'PY'
@@ -26,7 +26,7 @@ jobs:
           p=json.load(open('/tmp/pages.json'))
           assert p['build_type']=='legacy' and p['source']=={'branch':'inventory-manager','path':'/'}
           assert p['cname']=='riseise.com'
-          print('Existing publishing configuration verified; it will not be changed.')
+          print('Existing publishing target verified; no configuration change.')
           PY
       - uses: actions/checkout@v4
         with:
@@ -34,21 +34,23 @@ jobs:
           path: publish
       - uses: actions/checkout@v4
         with:
-          ref: 616b7cfec94ef92daa230332c7a383fe9cfa184d
+          ref: 42b11a89f1f1fb0690f3ebd43013fe7d5f5791fc
           path: source
           persist-credentials: false
-      - name: Copy the tested build into a new preview directory only
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare an isolated copy of the tested deployed-base build
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, shutil
-          root=pathlib.Path('publish/previews/inventory-iteration-2')
+          import json, os, pathlib, shutil, re
+          root=pathlib.Path('publish/previews/inventory-iteration-2-live')
           assert not root.exists(), 'Refusing to overwrite an existing preview'
           shutil.copytree('source/dist',root)
-          # Preview-only storage adapter: no game script or production save is changed.
           storage="""(() => {
             'use strict';
             const storage = window.localStorage;
-            const prefix = 'rise.preview.inventory-iteration-2:';
+            const prefix = 'rise.preview.inventory-iteration-2-live:';
             const keys = () => Array.from({length:storage.length},(_,i)=>storage.key(i)).filter(k=>k&&k.startsWith(prefix));
             const isolated = Object.freeze({
               get length(){return keys().length;},
@@ -62,21 +64,20 @@ jobs:
           })();
           """
           (root/'preview-context.js').write_text(storage)
-          p=root/'index.html'
-          html=p.read_text()
-          assert html.count('</head>')==1
-          html=html.replace('</head>','<meta name="robots" content="noindex,nofollow"><script src="preview-context.js"></script></head>')
-          html=html.replace('<title>rISE Café — Barista & Inventory Manager</title>','<title>RISE Inventory Manager — Iteration 2 Preview</title>')
-          p.write_text(html)
-          (root/'preview-build.json').write_text(json.dumps({'source_commit':os.environ['PREVIEW_SHA'],'preview_url':'https://riseise.com/previews/inventory-iteration-2/','isolated_saves':True},indent=2)+'\n')
-          # All game scripts, styles, and assets must remain identical to the tested branch.
+          for relative,script in [('index.html','preview-context.js'),('floor-manager/index.html','../preview-context.js')]:
+              p=root/relative;html=p.read_text();assert html.count('</head>')==1
+              html=html.replace('</head>','<meta name="robots" content="noindex,nofollow"><script src="'+script+'"></script></head>')
+              if relative=='index.html':html=re.sub(r'<title>.*?</title>','<title>RISE Inventory Manager — Current Version Preview</title>',html,count=1)
+              p.write_text(html)
+          (root/'preview-build.json').write_text(json.dumps({'source_commit':os.environ['PREVIEW_SHA'],'source_branch':'feat/inventory-iteration-2-live-base','deployed_base':'442e348ad4fe20af7328000c31679576f25f1ea0','preview_url':'https://riseise.com/previews/inventory-iteration-2-live/','isolated_saves':True},indent=2)+'\n')
           for source in pathlib.Path('source/dist').rglob('*'):
-            if source.is_file() and source.name!='index.html':
-              assert source.read_bytes()==(root/source.relative_to('source/dist')).read_bytes(), str(source)
+              if source.is_file() and source.name!='index.html':
+                  assert source.read_bytes()==(root/source.relative_to('source/dist')).read_bytes(), str(source)
+          print('Every game script, style and asset matches the tested source.')
           PY
           git -C publish diff --exit-code
-          node --check publish/previews/inventory-iteration-2/preview-context.js
-      - name: Browser smoke test on desktop and mobile before publishing
+          node --check publish/previews/inventory-iteration-2-live/preview-context.js
+      - name: Verify current tutorial, stockroom and isolated saves before publishing
         run: |
           npm install --prefix /tmp/rise-preview-tools --no-save --package-lock=false playwright@1.57.0
           cat > /tmp/rise-preview-smoke.cjs <<'JS'
@@ -88,22 +89,30 @@ jobs:
               for(const mobile of [false,true]){
                 const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},isMobile:mobile,hasTouch:mobile});
                 const page=await context.newPage(),errors=[],failed=[];
-                await page.addInitScript(()=>{window.previewTestRawStorage=window.localStorage;window.previewTestRawStorage.setItem('rise.cafe-rescue.five-day.v1','LIVE_SAVE_SENTINEL');});
+                await page.addInitScript(()=>{
+                  window.previewTestRawStorage=window.localStorage;
+                  window.previewTestRawStorage.setItem('rise.cafe-rescue.five-day.v1','LIVE_SAVE_SENTINEL');
+                  sessionStorage.setItem('rise.pre-survey.6Wcy1Vtr1EciL6f1A.seen','yes');
+                });
                 page.on('pageerror',e=>errors.push(e.message));
                 page.on('response',r=>{if(r.status()>=400)failed.push(r.status()+' '+r.url());});
                 await page.goto(process.argv[2],{waitUntil:'networkidle'});
                 await page.locator('#inventory-start').click();
-                for(const action of ['intro-next','intro-done','tour-begin'])await page.locator(`#cr-modal [data-action="${action}"]`).click();
+                await page.locator('#cr-modal [data-action="intro-done"]').click();
+                assert.equal(await page.locator('.cr-stock-item').count(),27,'current unified stockroom preserved');
+                assert.equal(await page.evaluate(()=>RESCUE.CONFIG.planningSeconds),90);
+                assert.equal(await page.locator('[data-action="category"]').count(),0,'old category interface not restored');
                 await page.locator('.cr-nav [data-tab="stock"]').click();
                 await page.locator('[data-action="inspect"][data-product="Whole Milk"]').click();
-                assert(await page.locator('.cr-tour-target').count()>0,'tutorial has a clickable highlight');
-                assert.equal(await page.evaluate(()=>previewTestRawStorage.getItem('rise.cafe-rescue.five-day.v1')),'LIVE_SAVE_SENTINEL','live save untouched');
-                assert(await page.evaluate(()=>previewTestRawStorage.getItem('rise.preview.inventory-iteration-2:rise.cafe-rescue.five-day.v1')),'preview saves in its own namespace');
+                assert.equal(await page.locator('#cr-modal .cr-tour-target').count(),1);
+                assert.equal(await page.locator('#cr-tour-spotlight').evaluate(n=>getComputedStyle(n).pointerEvents),'none');
+                assert.equal(await page.evaluate(()=>previewTestRawStorage.getItem('rise.cafe-rescue.five-day.v1')),'LIVE_SAVE_SENTINEL');
+                assert(await page.evaluate(()=>previewTestRawStorage.getItem('rise.preview.inventory-iteration-2-live:rise.cafe-rescue.five-day.v1')));
                 await page.reload({waitUntil:'networkidle'});
                 await page.locator('#inventory-continue').click();
-                assert(await page.locator('[data-action="resume-save"]').isVisible(),'preview resumes after reload');
-                assert.deepEqual(errors,[],'no browser errors');assert.deepEqual(failed,[],'all assets load');
-                console.log('PASS '+(mobile?'mobile':'desktop')+': preview loads, tutorial clicks work, saves are isolated and resume works');
+                assert(await page.locator('[data-action="resume-save"]').isVisible());
+                assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);
+                console.log('PASS '+(mobile?'mobile':'desktop')+': current stockroom, tutorial controls, timer, asset loading, isolated saves and reload/resume');
                 await context.close();
               }
             } finally {await browser.close();}
@@ -112,42 +121,41 @@ jobs:
           python3 -m http.server 8788 --bind 127.0.0.1 --directory publish >/tmp/preview-server.log 2>&1 &
           SERVER=$!
           trap 'kill "$SERVER"' EXIT
-          node /tmp/rise-preview-smoke.cjs http://127.0.0.1:8788/previews/inventory-iteration-2/
-      - name: Publish only the preview folder
+          node /tmp/rise-preview-smoke.cjs http://127.0.0.1:8788/previews/inventory-iteration-2-live/
+      - name: Publish only the new preview directory
         run: |
           cd publish
-          git add previews/inventory-iteration-2
+          git add previews/inventory-iteration-2-live
           git diff --cached --name-only > /tmp/preview-paths.txt
           python3 - <<'PY'
           import pathlib
           paths=pathlib.Path('/tmp/preview-paths.txt').read_text().splitlines()
-          assert paths and all(p.startswith('previews/inventory-iteration-2/') for p in paths)
-          print('Verified:',len(paths),'preview files; no existing production files modified.')
+          assert paths and all(p.startswith('previews/inventory-iteration-2-live/') for p in paths)
+          print('Only the new isolated preview folder is staged; live game files are unchanged.')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Add isolated Inventory iteration 2 playable preview'
+          git commit -m 'Add current deployed-base Inventory Manager iteration 2 preview'
           git push origin HEAD:refs/heads/inventory-manager
           gh api --method POST "repos/$REPO/pages/builds" --jq '{status,url}'
-      - name: Verify published preview and live homepage
+      - name: Verify hosted preview and unchanged production inventory
         run: |
           python3 - <<'PY'
-          import json, os, time, urllib.request
-          url='https://riseise.com/previews/inventory-iteration-2/preview-build.json'
+          import json, os, time, urllib.request, pathlib
+          root='https://riseise.com/previews/inventory-iteration-2-live/'
           for attempt in range(48):
-            try:
-              with urllib.request.urlopen(url+'?verify='+str(time.time_ns()),timeout=20) as r:
-                value=json.load(r)
-              if value.get('source_commit')==os.environ['PREVIEW_SHA']:
-                print('Preview is published:',value['preview_url']);break
-            except Exception as e:
-              print('Deployment check',attempt+1,type(e).__name__)
-            time.sleep(10)
-          else:
-            raise SystemExit('Preview did not become available within the verification window')
-          with urllib.request.urlopen('https://riseise.com/',timeout=30) as r:
-            assert r.status==200
-          print('Live homepage still responds successfully.')
+              try:
+                  with urllib.request.urlopen(root+'preview-build.json?verify='+str(time.time_ns()),timeout=20) as r:value=json.load(r)
+                  if value.get('source_commit')==os.environ['PREVIEW_SHA']:break
+              except Exception as e:print('Deployment check',attempt+1,type(e).__name__)
+              time.sleep(10)
+          else:raise SystemExit('Preview did not become available within the verification window')
+          for name in ['inventory.js','inventory-engine.js','inventory.css']:
+              data=urllib.request.urlopen(root+name+'?verify='+str(time.time_ns()),timeout=30).read()
+              assert data==pathlib.Path('source/dist',name).read_bytes(), 'Preview mismatch: '+name
+              live=urllib.request.urlopen('https://riseise.com/dist/'+name+'?verify='+str(time.time_ns()),timeout=30).read()
+              assert live==pathlib.Path('publish/dist',name).read_bytes(), 'Production file changed: '+name
+          print('Hosted preview matches tested source; production Inventory files remain unchanged.')
           PY
-          node /tmp/rise-preview-smoke.cjs https://riseise.com/previews/inventory-iteration-2/
-          printf '## Playable preview\n\nhttps://riseise.com/previews/inventory-iteration-2/\n\nDesktop and mobile smoke tests passed. Live game files and saves are unchanged.\n' >> "$GITHUB_STEP_SUMMARY"
+          node /tmp/rise-preview-smoke.cjs https://riseise.com/previews/inventory-iteration-2-live/
+          printf '## Corrected playable preview\n\nhttps://riseise.com/previews/inventory-iteration-2-live/\n\nBased on the deployed inventory-manager version. Desktop/mobile checks passed. Live game files and saved progress remain unchanged.\n' >> "$GITHUB_STEP_SUMMARY"
