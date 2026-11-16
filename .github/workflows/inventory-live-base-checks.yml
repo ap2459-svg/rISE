@@ -34,6 +34,19 @@ jobs:
           PY
           git apply --unidiff-zero --check /tmp/inventory.patch
           git apply --unidiff-zero /tmp/inventory.patch
+          python3 - <<'PY'
+          import pathlib
+          p=pathlib.Path('dist/inventory.js');s=p.read_text()
+          old="capacity:'Left · wait was too long'"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"capacity:'Left · not served in time'"))
+          p=pathlib.Path('tests/inventory-live-iteration2.browser.cjs');s=p.read_text()
+          old='});await page.clock.fastForward(1200);'
+          assert s.count(old)==1
+          # fastForward runs a repeating frame callback only once. Let both the
+          # existing event check and the following HUD paint run in this fixture.
+          p.write_text(s.replace(old,'});await page.clock.runFor(1200);'))
+          PY
       - name: Syntax, existing engine checks and baseline parity
         run: |
           node --check dist/inventory.js
@@ -48,6 +61,12 @@ jobs:
           npm install --prefix /tmp/rise-browser --no-save --package-lock=false playwright@1.57.0
           google-chrome --version
           mkdir -p /tmp/rise-live-shots
+      - name: Iteration 2 tutorial, two-round and interaction regressions
+        env:
+          PLAYWRIGHT_MODULE: /tmp/rise-browser/node_modules/playwright
+          CHROME_PATH: /usr/bin/google-chrome
+          SCREENSHOTS: /tmp/rise-live-shots
+        run: node tests/inventory-live-iteration2.browser.cjs
       - name: Existing desktop and mobile browser suites
         env:
           PLAYWRIGHT_MODULE: /tmp/rise-browser/node_modules/playwright
@@ -59,12 +78,6 @@ jobs:
             node "$file"
           done
           node tests/save-home.cjs
-      - name: Iteration 2 tutorial, two-round and interaction regressions
-        env:
-          PLAYWRIGHT_MODULE: /tmp/rise-browser/node_modules/playwright
-          CHROME_PATH: /usr/bin/google-chrome
-          SCREENSHOTS: /tmp/rise-live-shots
-        run: node tests/inventory-live-iteration2.browser.cjs
       - name: Report legacy Floor Manager tests without modifying that mode
         continue-on-error: true
         run: |
@@ -77,7 +90,7 @@ jobs:
       - name: Commit tested Inventory changes only to the new branch
         run: |
           rm tests/.iteration2-engine.patch tests/.iteration2-css.patch tests/.iteration2-ui.patch
-          git add dist/inventory-engine.js dist/inventory.js dist/inventory.css tests/.iteration2-engine.patch tests/.iteration2-css.patch tests/.iteration2-ui.patch
+          git add dist/inventory-engine.js dist/inventory.js dist/inventory.css tests/inventory-live-iteration2.browser.cjs tests/.iteration2-engine.patch tests/.iteration2-css.patch tests/.iteration2-ui.patch
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Improve Inventory Manager on the verified deployed baseline'
