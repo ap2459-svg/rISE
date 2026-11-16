@@ -4,7 +4,7 @@ class QueueCafe extends Cafe {
  addOrder(){const o=super.addOrder();o.progress={syrup:0,milk:0,coffee:0,topping:0,baking:0};if(o.recipe.coffee){o.price+=4.75-({Small:4,Medium:4.75,Large:5.5}[o.recipe.size]);o.recipe.size='Medium';const first=o.recipe.topping;const extra=o.id===1?'Caramel Drizzle':o.id%2===0?'Cinnamon':'Chocolate Drizzle';o.recipe.topping=[first,...(first!==extra?[extra]:[])];o.toppingStrokes=[];o.appliedToppings=[];}return o;}
  accept(o=this.active){if(!o)return false;super.accept(o);if(o.recipe.coffee)o.selections.size='Medium';return true;}
  // Readiness still means complete; eligibility to hand off is a separate decision.
- canServe(o=this.active){return this.tutorial?this.ready(o):!!o?.accepted&&this.orders.includes(o)&&!this.finished&&(!!o.recipe.coffee||this.ready(o));}
+ canServe(o=this.active){return !!o&&this.orders.includes(o)&&!this.finished&&this.ready(o)&&(this.tutorial||!o.recipe.coffee||(['syrup','milk','coffee'].every(k=>o.selections[k]===o.recipe[k]&&Number.isFinite(o.levels[k])&&o.levels[k]>this.baseLevel(k,o))&&o.recipe.topping.every(t=>o.appliedToppings?.includes(t))&&o.appliedToppings.length===o.recipe.topping.length));}
  helperOwns(o){return !!o&&this.jobs.some(j=>j.id===o.id&&j.worker==='helper');}
  canPour(k,o=this.active){return !this.helperOwns(o)&&super.canPour(k,o);}
  serve(o=this.active,byHelper=false){const r=super.serve(o,byHelper);if(r){this.jobs=this.jobs.filter(j=>j.id!==o.id);this.ovenSlots=this.ovenSlots.map(s=>s?.id===o.id?null:s);this.syncOven();if(this.manualOwner===o.id)this.manualOwner=null;}return r;}
@@ -35,7 +35,7 @@ class QueueCafe extends Cafe {
  if(this.time>=180&&!this.helperUnlocked){this.helperUnlocked=true;this.events.push({type:'rush'});}
  while(this.id<this.arrivals.length&&this.time>=this.arrivals[this.id]){const at=this.arrivals[this.id],o=this.addOrder();o.arrived=at;}
  this.rushIds=this.arrivals.map((at,i)=>at>=180&&i<this.id?i+1:0).filter(Boolean);this.nextArrival=this.arrivals[this.id]??Infinity;this.peakQueue=Math.max(this.peakQueue,this.orders.length);
- for(const job of [...this.jobs]){const o=this.orders.find(o=>o.id===job.id);if(!o){this.jobs=this.jobs.filter(j=>j!==job);continue;}const p=Math.min(100,(this.time-job.started)/job.duration*100);if(job.key==='drink'){for(const k of FIELDS)o.progress[k]=Math.max(o.progress[k],p);}else o.progress[job.key]=p;if(p>=100){this.complete(job,o);this.jobs=this.jobs.filter(j=>j!==job);}}
+ for(const job of [...this.jobs]){const o=this.orders.find(o=>o.id===job.id);if(!o){this.jobs=this.jobs.filter(j=>j!==job);continue;}const p=Math.min(100,(this.time-job.started)/job.duration*100);if(job.key==='drink'){for(const k of FIELDS)o.progress[k]=Math.max(o.progress[k],p);}else o.progress[job.key]=p;if(this.time-job.started>=job.duration-1e-8){this.complete(job,o);this.jobs=this.jobs.filter(j=>j!==job);}}
  if(this.helper&&!this.jobs.some(j=>j.worker==='helper')){const o=this.orders.find(o=>o.id!==this.manualOwner&&o.accepted&&o.recipe.coffee&&o.progress.topping<100&& !FIELDS.some(k=>o.fills[k]!==undefined||o.levels[k]!==undefined||o.selections[k]!==undefined||o.progress[k]>0)&&!this.jobs.some(j=>j.id===o.id&&j.worker==='player'));if(o)this.jobs.push({id:o.id,key:'drink',started:this.time,duration:14,worker:'helper'});}
  if(this.time>=this.duration){this.finished=true;this.events.push({type:'end'});}
  }

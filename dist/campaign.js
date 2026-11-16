@@ -5,7 +5,16 @@ start=function(){journey={shift:1,cash:45,owned:[],reports:[],rental:false};camp
 function beginCampaignShift(){closeModal();document.querySelector('#tutorial-coach')?.remove();document.querySelector('#tutorial-result-card')?.remove();lesson=null;lessonResult=null;sim=new CampaignCafe(journey.shift,journey.owned,journey.cash,journey.rental);journey.rental=false;paused=false;servedAnimation=null;render();toast(['','Shift 1 · Learn and observe the café.','Shift 2 · Test your improvements on the same rush.','Shift 3 · A busier café puts your system to the test.'][journey.shift]);}
 // Tutorial feedback stays small and next to the game, including the completion action.
 notice=function(title,body,callback,label='Continue'){paused=true;document.querySelector('#tutorial-result-card')?.remove();modalKind='tutorial-result';const e=document.createElement('aside');e.id='tutorial-result-card';e.setAttribute('role','dialog');e.innerHTML=`<h3>${title}</h3><p>${body}</p><button class="big-btn">${label}</button>`;document.body.appendChild(e);e.querySelector('button').onclick=()=>{e.remove();modalKind=null;paused=false;last=performance.now();if(label==='Start the real shift')beginCampaignShift();else callback?.();};positionCoach(e);e.querySelector('button').focus();};
-function positionCoach(e){const target=lesson!==null?document.querySelector(lessons[lesson]?.[2]):null,r=target?.getBoundingClientRect();const width=Math.min(270,innerWidth-20);e.style.width=width+'px';e.style.left=Math.max(10,Math.min(innerWidth-width-10,r?r.left-width-15:15))+'px';e.style.top=Math.max(10,Math.min(innerHeight-e.offsetHeight-10,r?r.top:120))+'px';}
+function positionCoach(e){
+ const target=lesson!==null?document.querySelector(lessons[lesson]?.[2]):null;
+ const panel=document.querySelector('.station-dialog');
+ // Place guidance in the dialog's normal flow, never over its cup or controls.
+ const parent=panel||document.body;if(e.parentElement!==parent)parent.appendChild(e);
+ e.classList.toggle('coach-in-station',!!panel);
+ if(panel){const next=panel.querySelector('header').nextSibling;if(next!==e)panel.insertBefore(e,next);e.style.cssText='';return;}
+ e.style.width=Math.min(270,innerWidth-20)+'px';e.style.left='10px';e.style.top='110px';
+}
+
 const originalTutorialUpdate=tutorialUpdate;
 tutorialUpdate=function(){originalTutorialUpdate();const e=document.querySelector('#tutorial-coach');if(e){e.style.visibility=lessonResult?"hidden":"visible";positionCoach(e);}};
 render=function(){campaignRender();const dashboard=document.querySelector('.queue-dashboard');dashboard.innerHTML='<div class="live-queue-pair"><span>Queue Length <b id="queue-live">0</b></span><span>Arrival Rate <b id="arrival-live">2/min</b></span></div><button class="helper-button" id="helper">+ Add barista</button><span id="mission-progress" hidden></span><span id="flow-counts" hidden></span>';document.querySelector('#helper').onclick=()=>showModal('helper');document.querySelector('.economy').style.visibility='hidden';update();};
