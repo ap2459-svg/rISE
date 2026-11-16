@@ -1,0 +1,20 @@
+name: Inventory preview
+on:
+  push:
+    branches: [preview/inventory-iteration-2]
+    paths: [.github/workflows/inventory-preview.yml]
+permissions:
+  contents: read
+  pages: read
+jobs:
+  inspect-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Read existing hosting configuration without changing it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/pages" --jq '{html_url,build_type,source,cname,status,https_enforced}'
+          gh api "repos/$REPO/deployments?per_page=3" --jq '.[] | {id,ref,environment,created_at}'
