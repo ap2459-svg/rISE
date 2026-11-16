@@ -451,3 +451,42 @@
 .cr-game .cr-guide b{font-size:15px;line-height:1.35}.cr-game .cr-guide .cr-guide-description{font-size:14px;line-height:1.4}.cr-game .cr-guide small{font-size:10px}.cr-game .cr-controls small{font-size:12px}.cr-game .cr-menu-card small,.cr-game .cr-menu-cost{font-size:13px}
 .cr-game .cr-suppliers{min-height:185px}.cr-game .cr-suppliers .cr-supplier{gap:3px;padding:6px}.cr-game .cr-supplier>b{min-height:0;line-height:1.2}.cr-game .cr-supplier-facts{gap:2px;line-height:1.2}.cr-game .cr-company-icon{width:28px;height:28px}.cr-game .cr-company-icon svg{width:26px;height:26px}.cr-game .cr-supplier>small{font-size:11px}
 @media(max-width:700px){.cr-game .cr-suppliers{min-height:210px}.cr-game .cr-supplier>b{font-size:12px}.cr-game .cr-supplier-facts{font-size:11px}.cr-game .cr-guide b{font-size:13px}.cr-game .cr-guide .cr-guide-description{font-size:12px}}
+
+/* Iteration 2: existing Inventory Manager tools, with clearer grouping and guidance. */
+.cr-nav>button .cr-nav-copy{display:block;width:auto;text-align:left;font:inherit;min-width:0}
+.cr-nav-copy small{display:block;font-size:10px;line-height:1.3;font-weight:500;margin-top:3px;opacity:.9}
+.cr-extra-tools{font-size:12px;flex-shrink:0}
+.cr-extra-tools summary,.cr-explainer summary{cursor:pointer;font-weight:800;padding:5px 0}
+.cr-extra-tools button{margin:5px 0}
+.cr-explainer{font-size:13px;flex-shrink:0;border-top:1px solid #cfb591}
+.cr-explainer p{margin:5px 0;line-height:1.45}
+.cr-profit-help{font-size:12px;line-height:1.45}
+.cr-event-summary{flex-shrink:0}
+.cr-game .cr-trend-layout{flex:1 0 auto;min-height:min-content}
+.cr-game .cr-live{grid-template-columns:minmax(0,1fr) 230px 210px}
+.cr-game #cr-live-stats{align-items:center;flex-wrap:wrap}
+.cr-game #cr-live-stats button{font-size:11px;padding:4px;box-shadow:none}
+.cr-game #cr-live-stats b{font-size:16px;white-space:nowrap}
+.cr-game #cr-dock.cr-delivery-new{border-color:#9b6415;background:#fff0b6;box-shadow:0 0 0 3px #f4c45580;animation:cr-delivery-pulse .8s ease-out 3}
+.cr-game #cr-dock small{white-space:normal;overflow-wrap:anywhere;line-height:1.3}
+@keyframes cr-delivery-pulse{50%{box-shadow:0 0 0 5px #f4c45540}}
+.cr-sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+/* The spotlight is purely visual: it never intercepts clicks, taps or keyboard focus. */
+#cr-tour-spotlight{position:fixed;inset:0;width:100vw;height:100dvh;z-index:10020;pointer-events:none}
+.inventory-playing .cr-tour-target{animation:none!important;outline:3px solid #c5162e!important;outline-offset:3px}
+.inventory-playing .cr-tour-target:after{content:'\2192  Click here';pointer-events:none}
+@media(max-width:800px){
+  .cr-nav-copy small{display:none}
+  .cr-game .cr-live,.cr-game .cr-live:has(.cr-notice){grid-template-columns:minmax(0,1fr) 145px}
+  .cr-game .cr-live #cr-live-stats{display:flex;grid-column:1/-1;justify-content:flex-end;gap:14px;border-top:1px solid #dac8a8;padding-top:3px}
+  .cr-game #cr-live-stats span,.cr-game #cr-live-stats button{font-size:10px}
+  .cr-game #cr-live-stats b{display:inline;font-size:12px;margin-right:3px}
+}
+@media(max-width:520px){
+  .cr-game .cr-nav>button{font-size:11px}
+  .cr-game .cr-live,.cr-game .cr-live:has(.cr-notice){grid-template-columns:minmax(0,1fr) 115px}
+  .cr-extra-tools,.cr-explainer,.cr-profit-help{font-size:11px}
+  .cr-shopping{overflow:auto;min-height:0;padding:3px}
+  .cr-suppliers{flex-shrink:0}
+}
+@media(prefers-reduced-motion:reduce){.cr-game #cr-dock.cr-delivery-new{animation:none!important}}

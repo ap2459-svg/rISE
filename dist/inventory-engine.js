@@ -60,6 +60,9 @@
   const clone=value=>JSON.parse(JSON.stringify(value));
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const sum=values=>values.reduce((a,b)=>a+b,0);
+  // Manual rotation is lot-specific and survives deliveries and save/resume.
+  // Unrotated stock keeps the existing receipt-time FIFO behavior.
+  const shelfOrder=(a,b)=>(a.rotationOrder||0)-(b.rotationOrder||0)||(a.received??0)-(b.received??0)||a.id-b.id;
   const newMetrics=()=>({
     arrived:0,served:0,lost:0,revenue:0,cogs:0,waste:0,wasteUnits:0,purchases:0,operating:0,conversion:0,refunds:0,
     stockouts:0,lostSales:0,stockLost:0,stockLostRevenue:0,priceLost:0,menuLost:0,satisfactionTotal:0,waitTotal:0,qualityTotal:0,
@@ -260,16 +263,23 @@
       if(!Number.isInteger(qty)||qty<=0||this.stock(name,frozen)<qty) return null;
       let left=qty,cost=0,quality=0;
       // Delivery organization sets shelf order. Expired stock is always excluded.
-      for(const l of this.lots[name].filter(l=>l.expires>this.day&&l.frozen===frozen).sort((a,b)=>(a.received??0)-(b.received??0)||a.id-b.id)) {
+      for(const l of this.lots[name].filter(l=>l.expires>this.day&&l.frozen===frozen).sort(shelfOrder)) {
         const take=Math.min(left,l.qty); l.qty-=take; left-=take; cost+=take*l.cost; quality+=take*l.quality;
         if(!left) break;
       }
       this.lots[name]=this.lots[name].filter(l=>l.qty>0); return {cost,quality:quality/qty};
     }
     rotate(name) {
-      if(!BY_NAME[name]) return;
-      this.lots[name].sort((a,b)=>(a.received??0)-(b.received??0)||a.id-b.id); this.earn('fifo','First in, first out');
-      this.lastExplanation='Older stock is now at the front. FIFO helps you sell it before it expires.';
+      if(!BY_NAME[name]) return false;
+      const usable=this.lots[name].filter(l=>l.qty>0&&l.expires>this.day)
+        .sort((a,b)=>a.expires-b.expires||(a.received??0)-(b.received??0)||a.id-b.id);
+      if(!usable.length){this.lastExplanation='There is no usable stock to move. Expired stock must be discarded.';return false;}
+      // Only an explicit rotation changes expiry priority. New deliveries do not
+      // silently undo it or rotate other products. Quantities and dates are untouched.
+      usable.forEach((lot,index)=>{lot.rotationOrder=index-usable.length;});
+      this.lots[name].sort(shelfOrder); this.earn('fifo','First in, first out');
+      this.lastExplanation='The usable stock expiring soonest is now at the front. It will be used first; frozen portions still need baking.';
+      return true;
     }
     /* Suppliers: quote first, then sample delivery risk once at checkout. */
     supplier(id) { return SUPPLIERS.find(s=>s.id===id&&s.unlock<=this.day); }
@@ -365,7 +375,7 @@
       this.markExpired();
       for(const l of d.lines) {
         this.lots[l.name].push({id:++this.serial,qty:l.qty,cost:l.cost,quality:l.quality,received:d.eta,expires:l.expires,frozen:l.frozen,written:l.written,supplierManaged:!!l.supplierManaged});
-        this.lots[l.name].sort((a,b)=>((a.received??0)-(b.received??0)||a.id-b.id));
+        this.lots[l.name].sort(shelfOrder);
       }
       d.shelved=true; this.tutorial.shelved=true;
       if(fifo) { this.learning.events.push({kind:'fifo',day:this.day,delivery:id}); this.earn('fifo','First in, first out'); this.lastExplanation='Older products in front: fewer items expire before you can sell them. That is FIFO.'; }
@@ -615,10 +625,13 @@
     lose(order,reason='stock') {
       if(['lost','served'].includes(order.status)) return;
       order.status='lost'; this.metrics.lost++; this.metrics.lostSales+=order.price;
-      if(reason==='price') this.metrics.priceLost++;
-      else if(reason==='menu') this.metrics.menuLost++;
+      if(reason==='price') { this.metrics.priceLost++; order.lossReason='price'; }
+      else if(reason==='menu') { this.metrics.menuLost++; order.lossReason='menu'; }
       else {
         const missing=this.missing(order),key=missing[0]||'Service capacity';
+        // Record the existing decision, not a guessed cause based on current stock.
+        order.lossReason=missing.length?'stock':'capacity';
+        order.missingAtLoss=missing.slice();
         this.metrics.lostByItem[key]=(this.metrics.lostByItem[key]||0)+order.price;
         if(missing.length) {
           this.metrics.stockLost++;this.metrics.stockLostRevenue+=order.price;
