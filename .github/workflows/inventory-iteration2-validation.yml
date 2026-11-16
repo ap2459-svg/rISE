@@ -1,0 +1,27 @@
+name: Inventory iteration 2 validation
+on:
+  push:
+    branches: [feat/inventory-manager-iteration-2]
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Existing inventory regression suite
+        run: node tests/inventory.test.cjs
+      - name: Export source and test results for inspection
+        if: always()
+        run: |
+          mkdir -p /tmp/rise-inventory-source
+          git archive HEAD | tar -x -C /tmp/rise-inventory-source
+          cp -r tests/artifacts /tmp/rise-inventory-source/tests/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-iteration2-source
+          path: /tmp/rise-inventory-source
+          include-hidden-files: true
+          retention-days: 1
