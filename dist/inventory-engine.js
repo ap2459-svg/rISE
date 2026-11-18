@@ -60,6 +60,8 @@
   const clone=value=>JSON.parse(JSON.stringify(value));
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
   const sum=values=>values.reduce((a,b)=>a+b,0);
+  // Preserve normal FIFO; only a player-requested rotation adds batch priority.
+  const shelfOrder=(a,b)=>(a.rotationOrder??0)-(b.rotationOrder??0)||(a.received??0)-(b.received??0)||a.id-b.id;
   const newMetrics=()=>({
     arrived:0,served:0,lost:0,revenue:0,cogs:0,waste:0,wasteUnits:0,purchases:0,operating:0,conversion:0,refunds:0,
     stockouts:0,lostSales:0,stockLost:0,stockLostRevenue:0,priceLost:0,menuLost:0,satisfactionTotal:0,waitTotal:0,qualityTotal:0,
@@ -292,16 +294,23 @@
       if(!Number.isInteger(qty)||qty<=0||this.stock(name,frozen)<qty) return null;
       let left=qty,cost=0,quality=0;
       // Delivery organization sets shelf order. Expired stock is always excluded.
-      for(const l of this.lots[name].filter(l=>l.expires>this.day&&l.frozen===frozen).sort((a,b)=>(a.received??0)-(b.received??0)||a.id-b.id)) {
+      for(const l of this.lots[name].filter(l=>l.expires>this.day&&l.frozen===frozen).sort(shelfOrder)) {
         const take=Math.min(left,l.qty); l.qty-=take; left-=take; cost+=take*l.cost; quality+=take*l.quality;
         if(!left) break;
       }
       this.lots[name]=this.lots[name].filter(l=>l.qty>0); return {cost,quality:quality/qty};
     }
     rotate(name) {
-      if(!BY_NAME[name]) return;
-      this.lots[name].sort((a,b)=>(a.received??0)-(b.received??0)||a.id-b.id); this.earn('fifo','First in, first out');
-      this.lastExplanation='Older stock moved to the front (FIFO).';
+      if(!BY_NAME[name]) return false;
+      const usable=this.lots[name].filter(l=>l.qty>0&&l.expires>this.day)
+        .sort((a,b)=>a.expires-b.expires||(a.received??0)-(b.received??0)||a.id-b.id);
+      if(!usable.length){this.lastExplanation='No usable stock to move. Discard expired stock instead.';return false;}
+      // Do not change dates, quantities or other products. Persist the chosen order
+      // on the lots so serving, later deliveries and save/resume all respect it.
+      usable.forEach((lot,index)=>{lot.rotationOrder=index-usable.length;});
+      this.lots[name].sort(shelfOrder); this.earn('fifo','First in, first out');
+      this.lastExplanation='Stock expiring soonest is now at the front. Frozen portions still need baking.';
+      return true;
     }
     /* Suppliers: quote first, then sample delivery risk once at checkout. */
     supplier(id) { return SUPPLIERS.find(s=>s.id===id&&s.unlock<=this.day); }
@@ -397,7 +406,7 @@
       this.markExpired();
       for(const l of d.lines) {
         this.lots[l.name].push({id:++this.serial,qty:l.qty,cost:l.cost,quality:l.quality,received:d.eta,expires:l.expires,frozen:l.frozen,written:l.written,supplierManaged:!!l.supplierManaged});
-        this.lots[l.name].sort((a,b)=>((a.received??0)-(b.received??0)||a.id-b.id));
+        this.lots[l.name].sort(shelfOrder);
       }
       d.shelved=true; this.tutorial.shelved=true;
       if(fifo) { this.learning.events.push({kind:'fifo',day:this.day,delivery:id}); this.earn('fifo','First in, first out'); this.lastExplanation='Stock stored with older items in front (FIFO).'; }
@@ -650,10 +659,11 @@
     lose(order,reason='stock') {
       if(['lost','served'].includes(order.status)) return;
       order.status='lost'; this.metrics.lost++; this.metrics.lostSales+=order.price;
-      if(reason==='price') this.metrics.priceLost++;
-      else if(reason==='menu') this.metrics.menuLost++;
+      if(reason==='price') { this.metrics.priceLost++; order.lossReason='price'; }
+      else if(reason==='menu') { this.metrics.menuLost++; order.lossReason='menu'; }
       else {
         const missing=this.missing(order),key=missing[0]||'Service capacity';
+        order.lossReason=missing.length?'stock':'capacity';order.lossMissing=missing.slice();
         this.metrics.lostByItem[key]=(this.metrics.lostByItem[key]||0)+order.price;
         if(missing.length) {
           this.metrics.stockLost++;this.metrics.stockLostRevenue+=order.price;
@@ -756,6 +766,8 @@
       if(choice==='value') this.menu.latte.price=Math.round(MENU[0].price*.9*4)/4;
       if(choice==='invite') this.promotion='invite';
       if(!this.lastExplanation) this.lastExplanation='Check sales and waste to judge this choice.';
+      const chosen=event.choices.find(c=>c[0]===choice);
+      this.learning.events.push({kind:'story-choice',day:this.day,title:event.title,choice:chosen[1],effect:chosen[2]});
       this.earn(`decision-${this.day}`,'Rescue decision',15); this.pendingEvent=null; return null;
     }
     servings(id) { const p=MENU.find(p=>p.id===id); return p?Math.min(...p.recipe.map(n=>this.stock(n))):0; }
