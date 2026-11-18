@@ -1,15 +1,15 @@
-import {CATALOG} from './catalog.mjs?v=crowds-40';
-import {SETS} from './seating-sets.mjs?v=crowds-40';
+import {CATALOG} from './catalog.mjs?v=flow-48';
+import {SETS} from './seating-sets.mjs?v=flow-48';
 
 export const BUILD_VARIANTS={
  comfortableChair:{name:'Comfortable chair',type:'chair',design:'upholstered',price:70}
 };
 export const FURNITURE_GROUPS={
  tables:['smallTable','roundTable','groupTable'],
- seating:['chair','comfortableChair','armchair','booth'],
+ seating:['chair','comfortableChair','booth'],
  extras:['tableOutlet','outlet','light','divider','plant']
 };
-export const buildItem=type=>BUILD_VARIANTS[type]||SETS[type]||CATALOG[type];
+export const buildItem=type=>CATALOG[type]?.retired?null:BUILD_VARIANTS[type]||SETS[type]||CATALOG[type];
 export function buildObject(type,id){
  const variant=BUILD_VARIANTS[type];
  return {id,type:variant?.type||type,x:0,z:.8,r:0,upgraded:true,...(variant?{design:variant.design,catalogOffer:type}:{})};

@@ -1,4 +1,5 @@
-import {free,lineFree} from './layout.mjs?v=crowds-40';
+import {steeringStep} from './congestion.mjs?v=flow-48';
+import {free,lineFree} from './layout.mjs?v=flow-48';
 // Visual group members use the same obstacle-aware routes as the lead guest.
 export function seatingRoute(sim, from, seat) {
   const approach = sim.seatPath(seat)?.path?.at(-2);
@@ -13,16 +14,22 @@ export function departureRoute(sim, from, seat, exit) {
   const path = visualRoute(sim, atSeat ? approach : from, exit);
   return path ? (atSeat ? [approach, ...path.slice(1)] : path.slice(1)) : null;
 }
-export function advanceGuest(position, path, distance, blockers = []) {
-  const next = {...position};
-  while (path?.length && distance > 0) {
-    const target = path[0], dx = target.x-next.x, dz = target.z-next.z, length = Math.hypot(dx,dz);
-    const travel=Math.min(length,distance),candidate=length?{x:next.x+dx/length*travel,z:next.z+dz/length*travel}:target;
-    if(blockers.some(b=>Math.hypot(candidate.x-b.x,candidate.z-b.z)<.42&&Math.hypot(candidate.x-b.x,candidate.z-b.z)<Math.hypot(next.x-b.x,next.z-b.z)))break;
-    if (length <= distance) { next.x=target.x;next.z=target.z;path.shift();distance-=length; }
-    else { next.x+=dx/length*distance;next.z+=dz/length*distance;distance=0; }
-  }
-  return next;
+export function advanceGuest(position,path,distance,blockers=[],options={}) {
+ const next={x:position.x,z:position.z},objects=options.objects||[];
+ // Other guests never stop this route. Furniture remains solid.
+ distance*=options.color==='red'?.68:options.color==='yellow'?.86:1;
+ let iterations=0;
+ while(path?.length&&distance>0&&iterations++<40){
+  const target=path[0],length=Math.hypot(target.x-next.x,target.z-next.z);
+  if(length<.005){path.shift();continue;}
+  const containing=objects.filter(o=>!free(next,[o],.24));
+  const ignore=containing.length===1?containing[0]:null;
+  const travel=Math.min(.1,distance,length),proposal=steeringStep(next,target,travel,objects,.24,[],ignore);
+  if(!proposal)break;
+  next.x=proposal.x;next.z=proposal.z;distance-=travel;
+  if(Math.hypot(next.x-target.x,next.z-target.z)<.005)path.shift();
+ }
+ return next;
 }
 
 // Recover a rendered group member that clipped a chair/booth while following.

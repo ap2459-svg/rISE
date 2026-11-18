@@ -1,4 +1,4 @@
-import {isTable,walkable} from './catalog.mjs?v=crowds-40';
+import {isTable,walkable} from './catalog.mjs?v=flow-48';
 // Shared room geometry for placement feedback and customer navigation.
 export const ROOM={left:-10.9,right:7.1,back:-7.85,front:7.65};
 export const ENTRY={x:6.0,z:7.25};

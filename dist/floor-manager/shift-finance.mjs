@@ -24,3 +24,12 @@ export function syncShiftFinances(sim,state,netSales=sim.revenue-sim.costs,hintC
 export function shiftProfit(sim){
  return sim.revenue+(sim.assetSales||0)-sim.costs-RUNNING_COST-(sim.hintCosts||0)-(sim.purchaseCosts||0);
 }
+
+// The current shift starts at zero during preparation and retains its result
+// on the report. This is separate from the player's spendable bank balance.
+export function visibleProfit(state,sim=null){
+ if(['day-running','intervene'].includes(state.phase)&&sim)return shiftProfit(sim);
+ if(state.phase==='day-report')return state.reports?.current?.profit||0;
+ if(state.phase==='campaign-complete')return state.campaignHistory?.at(-1)?.report?.profit||0;
+ return 0;
+}

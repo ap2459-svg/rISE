@@ -1,4 +1,4 @@
-import {REPAIRS} from './catalog.mjs?v=crowds-40';
+import {REPAIRS} from './catalog.mjs?v=flow-48';
 export const CLEANUP_KEYS=['waste','floor','paint'];
 export function cleanupGoals(s){return [['waste','Clear waste'],['floor','Replace floorboards'],['paint','Replace walls']].map(([key,label])=>({key,label,price:REPAIRS[key].price,met:!!s[key]}));}
 export function cleanupReady(s){return true;}

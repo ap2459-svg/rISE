@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.js';
-import {CATALOG} from './catalog.mjs?v=crowds-40';
-import {upgradeCost} from './upgrade-designs.mjs?v=crowds-40';
-import {requestFor} from './request-system.mjs?v=crowds-40';
+import {CATALOG} from './catalog.mjs?v=flow-48';
+import {upgradeCost} from './upgrade-designs.mjs?v=flow-48';
+import {requestFor} from './request-system.mjs?v=flow-48';
 
 export function chairUpgradeQuote(sim,state,guest){
  if(!sim||sim.done||guest?.phase!=='seated'||!['day-running','intervene'].includes(state.phase))return null;

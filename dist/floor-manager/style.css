@@ -104,7 +104,7 @@ body[data-service=on] #storeToggle{top:160px}#livePanel .streak-strip>span:first
 .zone-choices button[aria-pressed=true]{background:#eee3ce;box-shadow:0 0 0 2px var(--zone-color)}
 .zone-choices small{font:700 11px Nunito;color:#75674f;text-align:right;flex:0 0 72px}
 .zone-add-title{font:900 17px Nunito;margin:16px 0 12px}
-#labels .zone-label{pointer-events:auto;cursor:pointer;font:800 13px Nunito;border:2px solid var(--zone-color);background:#fff8e7ed;box-shadow:0 2px 7px #30251622;padding:6px 9px}
+#labels .zone-label{pointer-events:none;cursor:default;font:800 13px Nunito;border:2px solid var(--zone-color);background:#fff8e7ed;box-shadow:0 2px 7px #30251622;padding:6px 9px}
 #labels .zone-label[aria-pressed=true]{box-shadow:0 0 0 2px var(--zone-color)}
 #labels .zone-label[hidden],#zoneEmpty[hidden]{display:none}
 #dayHud .overlay-controls{flex-wrap:wrap}
@@ -145,3 +145,25 @@ body[data-service=on] #storeToggle{top:160px}#livePanel .streak-strip>span:first
 #dayHud #shiftBrief::before,.zone-guidance::before{content:"TODAY’S FOCUS";display:block;font:900 12px/1.4 Nunito;letter-spacing:1.2px;color:#526c3e;margin-bottom:5px;}
 .zone-guidance{margin-bottom:16px;}
 @media(max-width:750px){#dayHud #shiftBrief{font-size:16px;line-height:1.4;padding:10px 11px;}#dayHud:has(#shiftBrief:not([hidden])){max-height:45dvh;overflow-y:auto;}.zone-guidance{font-size:17px;}}
+
+#graphicsSettings{position:fixed;bottom:12px;right:12px;z-index:45;padding:6px 9px;background:#fff8e6;border:1px solid #bca679;border-radius:8px;font:700 12px Nunito}#graphicsSettings select{font:inherit;background:#fff8e6;border:0;color:#405436}
+
+/* Classroom controls: keep guidance beside the current interaction. */
+#walkthrough{inset:auto;right:auto;bottom:auto;width:260px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 180px);padding:15px;transition:left .15s ease,top .15s ease}
+#walkthrough h3{padding-right:25px;font-size:18px}#walkthrough p{margin:8px 0;font-size:14px}#walkthrough .practice-status{display:block;font-size:11px;color:#66764b}#skipWalk{position:absolute;right:5px;top:4px;margin:0!important;width:32px;height:32px;padding:0!important;border:0;background:#eee3c9;border-radius:50%;font-size:25px;color:#695231}#showPracticeLights{font-size:13px;border:1px solid #7c9859;border-radius:7px;background:#e1edce}
+#shiftProfitHud{position:fixed;right:20px;top:81px;z-index:25;display:flex;gap:12px;align-items:center;padding:6px 12px;border:1px solid #b2a078;border-radius:10px;background:#fff8e6;color:#8c4c35;font:700 13px Nunito}#shiftProfitHud b{font-size:19px}#shiftProfitHud[data-positive=true]{color:#366c3e}#shiftProfitHud[hidden]{display:none}
+#seatGuide{position:fixed;left:12px;bottom:155px;z-index:50;max-width:340px;padding:12px 40px 12px 14px;border:2px solid #4e9155;border-radius:12px;background:#eff9df;font:800 14px Nunito;color:#3c5f37}#seatGuide[hidden]{display:none}#cancelSeat{position:absolute;right:6px;top:5px;background:none;border:0;font-size:26px}
+@media(max-width:750px){#shiftProfitHud{right:10px;top:75px;font-size:11px;padding:5px 8px;gap:6px}#walkthrough{width:230px;font-size:12px}#walkthrough p{font-size:12px}#cameraControls{max-width:calc(100vw - 20px);overflow:auto}#seatGuide{max-width:250px;font-size:12px}}
+@media(prefers-reduced-motion:reduce){#walkthrough{transition:none}}
+
+/* Keep help clear of the Open control and service buttons. */
+#tutorialHelp{top:24px;left:90px;bottom:auto;z-index:35}
+@media(max-width:750px){#tutorialHelp{top:80px;left:12px;font-size:12px;padding:5px 8px}}
+
+/* A compact guide that stays beside the current seating target. */
+#seatWalkthrough{position:fixed;z-index:60;width:250px;max-width:calc(100vw - 24px);padding:14px 16px;background:#fff8e6;border:2px solid #71834e;border-radius:12px;box-shadow:0 4px 18px #0002;color:#493f30;font:600 14px/1.4 Nunito;pointer-events:auto}
+#seatWalkthrough[hidden]{display:none}#seatWalkthrough h3{font-size:17px;margin:6px 20px 7px 0}#seatWalkthrough p{margin:0}#seatWalkthrough small{font-size:11px;color:#5d773f;letter-spacing:.04em;font-weight:900}#dismissSeatTutorial{position:absolute;right:5px;top:4px;width:28px;height:28px;border:0;border-radius:50%;background:#eee3c9;color:#695231;font-size:23px;cursor:pointer}
+.seat-tutorial-target{outline:4px solid #ffc234!important;outline-offset:5px!important;box-shadow:0 0 0 9px #ffc23433!important}.guest-hit.seat-tutorial-target{z-index:8!important;background:#ffe49a22!important}
+@media(max-width:750px){#seatWalkthrough{width:220px;padding:12px;font-size:12px}#seatWalkthrough h3{font-size:15px}}
+
+#seatTutorialAim{position:fixed;z-index:48;transform:translate(-50%,-100%);pointer-events:none;padding:4px 8px;background:#ffcc47;color:#493b21;border:2px solid #fff2c3;border-radius:8px;font:900 12px Nunito;box-shadow:0 2px 8px #0003}#seatTutorialAim[hidden]{display:none}

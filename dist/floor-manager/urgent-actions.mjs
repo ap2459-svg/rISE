@@ -1,13 +1,13 @@
-import {TABLE_OUTLET_PRICE,supportsCharging,tableOutlet,hasTableOutlet} from './charging.mjs?v=crowds-40';
-import {RENOVATIONS,bathroomDoors,purchaseRenovation} from './renovations.mjs?v=crowds-40';
-import {rewardGuest} from './patience.mjs?v=crowds-40';
-import {upgradeCost} from './upgrade-designs.mjs?v=crowds-40';
+import {TABLE_OUTLET_PRICE,supportsCharging,tableOutlet,hasTableOutlet} from './charging.mjs?v=flow-48';
+import {RENOVATIONS,bathroomDoors,purchaseRenovation} from './renovations.mjs?v=flow-48';
+import {rewardGuest} from './patience.mjs?v=flow-48';
+import {upgradeCost} from './upgrade-designs.mjs?v=flow-48';
 // Suggestions and execution share this evaluator. No purchase is charged until
 // its placement and its effect on the requesting customer have been rechecked.
-import {CafeSimulation,cafeSnapshot,clone,worldObstacles,seatsIn,PROFILES} from './day.mjs?v=crowds-40';
-import {CATALOG,isTable} from './catalog.mjs?v=crowds-40';
-import {SETS,createSet} from './seating-sets.mjs?v=crowds-40';
-import {ROOM,ENTRY,placement,overlap} from './layout.mjs?v=crowds-40';
+import {CafeSimulation,cafeSnapshot,clone,worldObstacles,seatsIn,PROFILES} from './day.mjs?v=flow-48';
+import {CATALOG,isTable} from './catalog.mjs?v=flow-48';
+import {SETS,createSet} from './seating-sets.mjs?v=flow-48';
+import {ROOM,ENTRY,placement,overlap} from './layout.mjs?v=flow-48';
 export const urgency=g=>g.concern&&!['exiting','departed','pending'].includes(g.phase)?Math.max(0,Math.min(1,1-g.concern.remaining/g.concern.total)):0;
 export const stage=g=>!g.concern?'normal':urgency(g)<.35?'yellow':urgency(g)<.7?'orange':'red';
 export function trialSimulation(sim,cafe){const t=Object.assign(Object.create(CafeSimulation.prototype),sim);t.cafe=clone(cafe);t.obs=worldObstacles(t.cafe);t.seats=seatsIn(t.cafe);t.tables=t.cafe.objects.filter(isTable);t.cache=new Map();t.bathrooms=bathroomDoors(t.cafe);return t}

@@ -1,7 +1,7 @@
-import {floorPattern} from './upgrade-designs.mjs?v=crowds-40';
+import {floorPattern} from './upgrade-designs.mjs?v=flow-48';
 import * as THREE from './vendor/three.module.js';
-import {box,cyl,ball,plant,windowPanel,chalkboard,wallMap,textured,cobweb,makeItem} from './models.mjs?v=crowds-40';
-import {paintedFloor,paintedPatch,wallSkin} from './painted.mjs?v=crowds-40';
+import {box,cyl,ball,plant,windowPanel,chalkboard,wallMap,textured,cobweb,makeItem} from './models.mjs?v=flow-48';
+import {paintedFloor,paintedPatch,wallSkin} from './painted.mjs?v=flow-48';
 
 // The original painted café, with a bigger usable floor and real extensions.
 export function makeCafeRoom(state){

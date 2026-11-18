@@ -1,10 +1,9 @@
-import {recognizeAreas} from './request-system.mjs?v=crowds-40';
-import {footprint} from './layout.mjs?v=crowds-40';
+import {recognizeAreas} from './request-system.mjs?v=flow-48';
+import {footprint} from './layout.mjs?v=flow-48';
 
 export const CAFE_ZONES = {
  social: {name:'Social corner',color:'#d58a50',needs:'3+ reachable seats together',items:['roundSet','longSet','booth','plant']},
- focus: {name:'Focus space',color:'#6888b7',needs:'Quiet desks · light · charging',items:['soloSet','smallSet','comfortableChair','light','tableOutlet','outlet']},
- cozy: {name:'Cozy lounge',color:'#b47d9c',needs:'Comfortable lounge seating',items:['armchair','plant','light']}
+ focus: {name:'Focus space',color:'#6888b7',needs:'Quiet desks · light · charging',items:['soloSet','smallSet','comfortableChair','light','tableOutlet','outlet']}
 };
 
 // Use the mission's actual area recognition, never a manually assigned zone.
