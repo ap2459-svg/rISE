@@ -1,0 +1,72 @@
+name: Inventory production release validation
+on:
+  push:
+    branches: [release/inventory-iteration-2-production]
+permissions:
+  contents: read
+jobs:
+  release-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NODE_PATH: /tmp/rise-browser/node_modules
+      PLAYWRIGHT_MODULE: /tmp/rise-browser/node_modules/playwright
+      PLAYWRIGHT_PATH: /tmp/rise-browser/node_modules/playwright
+      CHROME_PATH: /usr/bin/google-chrome
+      SCREENSHOTS: /tmp/rise-release-shots
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify release changes only the three Inventory files
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          actual = subprocess.check_output(['git','diff','--name-only','1fea364f92659350330cd766fbf95cca10a4a899','2f76824a802450d06cca80a8b4b15a71f248148c'],text=True).splitlines()
+          expected = ['dist/inventory-engine.js','dist/inventory.css','dist/inventory.js']
+          assert sorted(actual) == sorted(expected), actual
+          subprocess.run(['git','diff','--exit-code','2f76824a802450d06cca80a8b4b15a71f248148c','HEAD','--','dist','index.html','CNAME'],check=True)
+          print('PASS: release changes exactly three Inventory files; all other production files unchanged; tested runtime matches release.')
+          PY
+      - name: Syntax and Inventory engine regressions
+        run: |
+          node --check dist/inventory.js
+          node --check dist/inventory-engine.js
+          node tests/inventory.test.cjs
+          node tests/inventory-planning.test.cjs
+          node tests/inventory-setup.test.cjs
+          node tests/inventory-live-iteration2.test.cjs
+      - name: Install isolated browser tools
+        run: |
+          npm install --prefix /tmp/rise-browser --no-save --package-lock=false playwright@1.57.0
+          google-chrome --version
+          mkdir -p /tmp/rise-release-shots
+      - name: Inventory desktop and mobile browser regressions
+        run: |
+          for file in tests/inventory-live-iteration2.browser.cjs tests/inventory-planning.browser.cjs tests/inventory-setup.browser.cjs tests/inventory-shelves.browser.cjs tests/inventory-presentation.browser.cjs tests/inventory-tutorial.browser.cjs tests/save-home.cjs; do
+            node "$file"
+          done
+      - name: Verify current Barista and Floor Manager still work
+        env:
+          RISE_TEST_URL: http://127.0.0.1:4173/
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory dist >/tmp/rise-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in $(seq 1 15); do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node tests/barista-iteration2.cjs
+          node tests/barista-ui.cjs
+          node tests/release-floor-launch.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-production-release-review
+          path: /tmp/rise-release-shots
+          retention-days: 7
